@@ -1,0 +1,11 @@
+[project]
+name = "qres-gui"
+version = "0.1.0"
+description = "Per-game resolution switching through QRes"
+requires-python = ">=3.11"
+dependencies = ["PySide6>=6.6", "psutil>=5.9"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+timeout = 60
