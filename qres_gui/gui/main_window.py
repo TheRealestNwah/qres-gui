@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import config, display, hooks, paths, session, shortcuts
+from .. import __version__, config, display, hooks, paths, session, shortcuts
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
@@ -32,7 +32,7 @@ class GameItem(QTreeWidgetItem):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("QRes GUI")
+        self.setWindowTitle(f"QRes GUI {__version__}")
         self.resize(1360, 840)
         self.cfg = config.load()
         self.steam = SteamClient()

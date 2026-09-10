@@ -5,8 +5,19 @@ and back again when it closes. Made for games that only render correctly when
 the *desktop* is at, say, 2560 × 1440 on a 3440 × 1440 ultrawide, because they
 don't let you pick an exact resolution themselves.
 
-Resolution changes go through [QRes](https://sourceforge.net/projects/qres/)
-(the Windows API is only a fallback for switching back).
+Resolution changes go through **QRes** (`QRes.exe` v1.1 by Anders Kjersem), a
+small command-line tool that isn't included here. Get it separately and point
+QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
+the Windows display API directly.
+
+> **Status: early alpha (0.1.0-alpha.1).** Resolution switching, restoring,
+> the installer and game detection work. Not yet tested end to end: a real
+> Steam launch through `%command%`, Steam's *Stop* button, the Steam overlay,
+> and whether Steam keeps the launch options across restarts. Expect rough
+> edges, and please report what you find.
+>
+> Windows 10/11 only. The executables aren't code-signed, so SmartScreen may
+> warn the first time you run them.
 
 ## How it works
 
@@ -44,9 +55,16 @@ not from the store's own button. The store can't be told to go through the launc
 
 ## Using it
 
-1. Run `.\install.ps1`. It builds and installs to `%LOCALAPPDATA%\Programs\QResGUI`,
-   adds **QRes GUI** to the Start menu and to *Settings › Apps*. Re-run it to
-   update; the folder never moves, so existing hooks keep working.
+1. Install:
+   - **From a release:** download `QResGUI-<version>-win64.zip` from
+     [Releases](https://github.com/TheRealestNwah/qres-gui/releases), extract it
+     and double-click `install.cmd`.
+   - **From source:** run `.\install.ps1` (see Development).
+
+   Either way it installs to `%LOCALAPPDATA%\Programs\QResGUI` and adds
+   **QRes GUI** to the Start menu and to *Settings › Apps*. Installing a newer
+   version the same way updates it in place. The folder never moves, so
+   existing hooks keep working.
 2. Open **QRes GUI**. If QRes.exe isn't on your PATH or in the install folder,
    it asks you where it is. Select a game, tick **Switch resolution when this game
    launches** and pick the resolution. **Test for 10 seconds** tries the mode
@@ -82,7 +100,11 @@ py -3.13 -m venv .venv
 .venv\Scripts\pythonw QResGUI.pyw         # run from source
 .venv\Scripts\python -m pytest            # tests (don't change the real resolution)
 .\build.ps1                               # -> dist\QResGUI\
+.\install.ps1                             # build + install for the current user
+.\package.ps1                             # build + release\QResGUI-<version>-win64.zip
 ```
+
+The version lives in `qres_gui/__init__.py` (mirrored in `pyproject.toml`).
 
 Run from source, the GUI writes launch options that call
 `.venv\Scripts\pythonw.exe QResLauncher.pyw`. That works, but the built exe
@@ -91,7 +113,8 @@ is the stable target.
 Layout:
 
 - `qres_gui/display.py`: read modes (EnumDisplaySettings), switch via QRes / API
-- `qres_gui/launcher.py`: the `run` / `restore` / `guard` entry points
+- `qres_gui/launcher.py`: the `run` / `restore` / `remove-hooks` / `guard` entry points
+- `qres_gui/hooks.py`: finds and removes Steam launch options and game shortcuts
 - `qres_gui/vdf.py`: Valve KeyValues reader/writer (round-trips Steam's files byte for byte)
 - `qres_gui/stores/`: per-store detection; `steam.py` also edits launch options
 - `qres_gui/gui/`: PySide6 UI
@@ -108,3 +131,7 @@ Layout:
 - After the game exits, switching back waits about 4 s (3 s to allow for games
   that restart themselves, plus the configurable restore delay) unless the game
   has **Switch back the moment the game closes** ticked.
+
+## License
+
+MIT; see [LICENSE](LICENSE). QRes itself is a separate program with its own terms.

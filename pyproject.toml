@@ -1,6 +1,7 @@
 [project]
 name = "qres-gui"
-version = "0.1.0"
+version = "0.1.0a1"  # PEP 440 spelling of qres_gui.__version__
+license = "MIT"
 description = "Per-game resolution switching through QRes"
 requires-python = ">=3.11"
 dependencies = ["PySide6>=6.6", "psutil>=5.9"]
