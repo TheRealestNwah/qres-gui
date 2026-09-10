@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QFileInfo, QRect, QSize, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileIconProvider, QFrame, QHBoxLayout, QHeaderView, QLabel,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QFileIconProvider, QFrame, QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QMainWindow, QMessageBox, QPushButton, QSplitter, QStatusBar, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import config, display, paths, session, shortcuts
+from .. import config, display, hooks, paths, session, shortcuts
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
@@ -50,6 +51,7 @@ class MainWindow(QMainWindow):
         self._poll = QTimer(self, interval=2500, timeout=self._poll_state)
         self._poll.start()
         QTimer.singleShot(300, self._check_leftover_session)
+        QTimer.singleShot(500, self._ensure_qres)
 
     # --- setup -------------------------------------------------------------
 
@@ -438,8 +440,55 @@ class MainWindow(QMainWindow):
         self.detail.show_game(None)
         self.rescan()
 
+    def remove_all_hooks(self) -> None:
+        found = hooks.find(self.steam)
+        if not found:
+            QMessageBox.information(self, "Remove all hooks", "Nothing is hooked up right now.")
+            return
+        if found.steam and self.steam.is_running():
+            answer = QMessageBox.question(
+                self, "Remove all hooks",
+                "Steam is running. It has to be closed before its launch options can be changed.\n\nClose Steam now?")
+            if answer != QMessageBox.StandardButton.Yes or not self._close_steam_and_wait():
+                return
+        answer = QMessageBox.question(
+            self, "Remove all hooks",
+            f"Remove QRes from {len(found.steam)} Steam game(s)' launch options and delete "
+            f"{len(found.shortcut_files)} game shortcut(s)?\n\n"
+            "Switching gets turned off for every game; your resolution choices are kept.")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            hooks.remove(self.steam, found)
+        except Exception as exc:
+            QMessageBox.warning(self, "Remove all hooks", str(exc))
+            return
+        for entry in self.cfg["games"].values():
+            entry["enabled"] = False
+        self._save_now()
+        self._reload_launch_options()
+        self.refresh_rows()
+        self.statusBar().showMessage("Removed all hooks and turned switching off.", 10000)
+
+    def _close_steam_and_wait(self, timeout: float = 45.0) -> bool:
+        self.steam.shutdown()
+        self.statusBar().showMessage("Waiting for Steam to exit…")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            deadline = time.monotonic() + timeout
+            while self.steam.is_running() and time.monotonic() < deadline:
+                QApplication.processEvents()
+                time.sleep(0.25)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if self.steam.is_running():
+            QMessageBox.warning(self, "Steam", "Steam didn't exit. Close it yourself and try again.")
+            return False
+        self.steam_running = False
+        return True
+
     def open_settings(self) -> None:
-        dialog = SettingsDialog(self, self.cfg, self.modes)
+        dialog = SettingsDialog(self, self.cfg, self.modes, on_remove_hooks=self.remove_all_hooks)
         if dialog.exec():
             dialog.apply_to(self.cfg)
             self._save_now()
@@ -469,6 +518,21 @@ class MainWindow(QMainWindow):
             session.clear()
         self.statusBar().showMessage(f"Switched to {mode} ({how}).", 6000)
         self._poll_state()
+
+    def _ensure_qres(self) -> None:
+        if display.find_qres(self.cfg.get("qres_path")):
+            return
+        answer = QMessageBox.question(
+            self, "QRes not found",
+            "QRes.exe isn't on your PATH or next to QRes GUI, and no location is set.\n\n"
+            "Without it, resolutions are changed through Windows directly instead. Locate QRes.exe now?")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "Locate QRes.exe", "", "QRes (QRes.exe);;Programs (*.exe)")
+        if path:
+            self.cfg["qres_path"] = os.path.normpath(path)
+            self._save_now()
+            self.statusBar().showMessage(f"Using {self.cfg['qres_path']}", 8000)
 
     def _check_leftover_session(self) -> None:
         active = session.read()

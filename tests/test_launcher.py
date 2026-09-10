@@ -85,6 +85,33 @@ def test_switch_and_restore_are_paired(monkeypatch):
     assert session.read() is None
 
 
+@pytest.mark.parametrize("quick, minimum, maximum", [(False, 2.5, 6), (True, 0, 1.0)])
+def test_quick_restore_skips_the_waits(monkeypatch, tmp_path, quick, minimum, maximum):
+    """Time from the game exiting to the display being switched back.
+
+    Normally that's EXIT_GRACE + restore_delay (1.5 + 1.0 here); quick_restore skips both.
+    """
+    monkeypatch.setattr(launcher, "EXIT_GRACE", 1.5)
+    desktop = display.Mode(3440, 1440, 165)
+    restored_at = []
+    monkeypatch.setattr(display, "current_mode", lambda: desktop)
+    monkeypatch.setattr(display, "resolve", lambda w, h, r, d: display.Mode(w, h, d.refresh))
+    monkeypatch.setattr(display, "set_mode",
+                        lambda mode, qres, temporary: mode == desktop and restored_at.append(time.monotonic()))
+    monkeypatch.setattr(launcher, "_spawn_guard", lambda: None)
+    cfg = config.load()
+    cfg.update(switch_delay=0, restore_delay=1.0)
+    cfg["games"]["steam:1"] = {"enabled": True, "width": 2560, "height": 1440, "refresh": 0,
+                               "watch": [], "quick_restore": quick}
+    config.save(cfg)
+
+    # The "game" records when it quits; monotonic() is system-wide on Windows.
+    stamp = tmp_path / "exit.txt"
+    game = [sys.executable, "-c", f"import time; open({str(stamp)!r}, 'w').write(repr(time.monotonic()))"]
+    launcher.run("steam:1", game)
+    assert minimum <= restored_at[0] - float(stamp.read_text()) <= maximum
+
+
 def test_disabled_game_launches_without_switching(monkeypatch):
     cfg = config.load()
     cfg["games"]["steam:1"] = {"enabled": False, "width": 800, "height": 600, "refresh": 0}

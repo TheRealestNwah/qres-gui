@@ -29,6 +29,11 @@ def log_path() -> Path:
     return app_dir() / "launcher.log"
 
 
+def app_folder() -> Path:
+    """The install folder when built, the project root when run from source."""
+    return Path(sys.executable).parent if getattr(sys, "frozen", False) else PROJECT_ROOT
+
+
 def launcher_command() -> list[str]:
     """Command prefix that starts the launcher.
 

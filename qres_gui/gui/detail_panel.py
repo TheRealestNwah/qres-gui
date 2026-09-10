@@ -96,6 +96,11 @@ class DetailPanel(QScrollArea):
         form.addRow("Resolution", self.res_combo)
         form.addRow("Refresh rate", self.rate_combo)
         layout.addLayout(form)
+        self.quick = QCheckBox("Switch back the moment the game closes")
+        self.quick.setToolTip("Skips the few seconds QRes normally waits after the game exits, which\n"
+                              "catch games that restart themselves (e.g. after changing graphics settings).")
+        self.quick.toggled.connect(self._on_quick)
+        layout.addWidget(self.quick)
         self.test_btn = QPushButton("Test for 10 seconds", clicked=self._test)
         layout.addLayout(_row(self.test_btn, _muted("Switches, then comes back on its own.")))
         v.addWidget(box)
@@ -198,6 +203,7 @@ class DetailPanel(QScrollArea):
         self.open_folder.setEnabled(bool(game.install_dir) and os.path.isdir(game.install_dir))
 
         self.enabled.setChecked(bool(entry.get("enabled")))
+        self.quick.setChecked(bool(entry.get("quick_restore")))
         self._fill_resolutions(entry["width"], entry["height"])
         self._fill_rates(entry["width"], entry["height"], entry.get("refresh", 0))
         self.watch.setText(", ".join(entry.get("watch", [])))
@@ -262,6 +268,12 @@ class DetailPanel(QScrollArea):
         if self._loading or not self.game:
             return
         self._entry()["enabled"] = checked
+        self._changed()
+
+    def _on_quick(self, checked: bool) -> None:
+        if self._loading or not self.game:
+            return
+        self._entry()["quick_restore"] = checked
         self._changed()
 
     def _on_resolution(self) -> None:

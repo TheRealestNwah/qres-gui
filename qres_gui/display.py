@@ -15,6 +15,8 @@ import time
 from ctypes import wintypes
 from dataclasses import asdict, dataclass
 
+from . import paths
+
 log = logging.getLogger(__name__)
 
 ENUM_CURRENT_SETTINGS = 0xFFFFFFFF
@@ -140,7 +142,9 @@ def resolve(width: int, height: int, refresh: int, desktop: Mode) -> Mode:
 
 
 def find_qres(configured: str | None = None) -> str | None:
-    for candidate in (configured, shutil.which("QRes.exe"), shutil.which("qres")):
+    """The configured QRes.exe, else one on PATH, else one dropped next to the app."""
+    bundled = os.path.join(paths.app_folder(), "QRes.exe")
+    for candidate in (configured, shutil.which("QRes.exe"), bundled):
         if candidate and os.path.isfile(candidate):
             return candidate
     return None

@@ -2,7 +2,8 @@
 
     QResLauncher run <game-id> [game command...]
     QResLauncher restore
-    QResLauncher guard <pid>          (internal)
+    QResLauncher remove-hooks [report.json]   (used by the uninstaller)
+    QResLauncher guard <pid>                  (internal)
 
 `run` switches to the game's configured resolution, starts the game (the
 command Steam substitutes for %command%, or the launch target saved for the
@@ -12,6 +13,7 @@ game), waits for the game's processes to exit and switches back.
 from __future__ import annotations
 
 import ctypes
+import json
 import logging
 import os
 import subprocess
@@ -34,6 +36,7 @@ SEE_MASK_NOCLOSEPROCESS = 0x00000040
 
 APPEAR_TIMEOUT = 180.0  # how long to wait for a watched process to show up
 EXIT_GRACE = 3.0        # a game gone for this long is closed (covers self-restarts)
+EXIT_STEAM_RUNNING = 3  # remove-hooks: Steam must be closed first
 
 
 class LaunchError(RuntimeError):
@@ -49,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
             return run(argv[1], argv[2:])
         if argv == ["restore"]:
             return restore()
+        if argv[:1] == ["remove-hooks"] and len(argv) <= 2:
+            return remove_hooks(argv[1] if len(argv) == 2 else None)
         if len(argv) == 2 and argv[0] == "guard":
             return guard(int(argv[1]))
     except Exception as exc:
@@ -72,6 +77,7 @@ def run(game_id: str, command: list[str]) -> int:
         raise LaunchError(f"There's no launch target saved for {game_id}. Set the game up in QRes GUI first.")
 
     watch = {w.strip().lower() for w in entry.get("watch", []) if w.strip()}
+    quick = bool(entry.get("quick_restore"))
     switch = _Switch(cfg, entry, game_id) if entry.get("enabled") else None
     if switch is None:
         log.info("resolution switching is off for %s; launching as-is", game_id)
@@ -79,7 +85,7 @@ def run(game_id: str, command: list[str]) -> int:
         switch.apply()
     try:
         started = start()
-        return _wait(started, watch)
+        return _wait(started, watch, grace=0.0 if quick else None)
     finally:
         if switch is not None:
             switch.restore()
@@ -127,7 +133,8 @@ class _Switch:
     def restore(self) -> None:
         if self.original is None:
             return
-        time.sleep(float(self.cfg.get("restore_delay", 1.0)))
+        if not self.entry.get("quick_restore"):
+            time.sleep(float(self.cfg.get("restore_delay", 1.0)))
         try:
             how = display.set_mode(self.original, self.qres, self.temporary)
             log.info("restored %s (%s)", self.original, how)
@@ -245,8 +252,8 @@ def _create_time(pid: int) -> float | None:
         return None
 
 
-def _wait(started: subprocess.Popen | int | None, watch: set[str]) -> int:
-    """Block until the game is gone.
+def _wait(started: subprocess.Popen | int | None, watch: set[str], grace: float | None = None) -> int:
+    """Block until the game is gone (for `grace` seconds; default EXIT_GRACE).
 
     Without `watch`, that's when the started process and everything it spawned
     have exited. With `watch` (process names), it's when the watched processes
@@ -256,6 +263,7 @@ def _wait(started: subprocess.Popen | int | None, watch: set[str]) -> int:
     Windows keeps a process's parent pid after the parent exits, so a game
     started by a launcher that quit straight away is still recognised as ours.
     """
+    grace = EXIT_GRACE if grace is None else grace
     tracked: dict[int, psutil.Process] = {}  # live game processes
     names: dict[int, str] = {}
     born: dict[int, float] = {}               # every pid ever tracked -> creation time
@@ -307,11 +315,11 @@ def _wait(started: subprocess.Popen | int | None, watch: set[str]) -> int:
             gone_since = None
         elif gone_since is None:
             gone_since = now
-        elif now - gone_since >= EXIT_GRACE:
+        elif now - gone_since >= grace:
             break
         # Poll fast while launchers are likely to be handing off, then back off.
         elapsed = now - t0
-        time.sleep(0.05 if elapsed < 15 else 0.25 if elapsed < 60 else 1.0)
+        time.sleep(0.05 if elapsed < 15 else 0.25 if elapsed < 60 else 0.5)
 
     log.info("game exited after %.0f s", time.monotonic() - t0)
     if isinstance(started, subprocess.Popen):
@@ -359,6 +367,30 @@ def restore() -> int:
     log.info("restored %s (%s)", mode, how)
     session.clear()
     return 0
+
+
+def remove_hooks(report: str | None) -> int:
+    """Strip our Steam launch options and delete game shortcuts (for the uninstaller).
+
+    Exits with EXIT_STEAM_RUNNING, touching nothing, if Steam needs changing but is open.
+    """
+    from . import hooks
+    from .stores.steam import SteamClient, SteamRunningError
+
+    client = SteamClient()
+    found = hooks.find(client)
+    summary = {"steam": sorted(found.steam), "shortcuts": [str(p) for p in found.shortcut_files], "status": "ok"}
+    code = 0
+    try:
+        hooks.remove(client, found)
+        log.info("removed hooks: %s", summary)
+    except SteamRunningError:
+        summary["status"], code = "steam-running", EXIT_STEAM_RUNNING
+        log.info("can't remove Steam hooks while Steam is running")
+    if report:
+        with open(report, "w", encoding="utf-8") as fh:
+            json.dump(summary, fh)
+    return code
 
 
 # --- plumbing --------------------------------------------------------------

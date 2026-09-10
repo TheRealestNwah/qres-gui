@@ -44,13 +44,14 @@ not from the store's own button. The store can't be told to go through the launc
 
 ## Using it
 
-1. Build (see below) and move `dist\QResGUI\` somewhere permanent. Steam launch
-   options and shortcuts reference `QResLauncher.exe` by absolute path. If you
-   move the folder later, the GUI flags the affected games and **Update in
-   Steam** fixes them.
-2. Run `QResGUI.exe`, select a game, tick **Switch resolution when this game
+1. Run `.\install.ps1`. It builds and installs to `%LOCALAPPDATA%\Programs\QResGUI`,
+   adds **QRes GUI** to the Start menu and to *Settings › Apps*. Re-run it to
+   update; the folder never moves, so existing hooks keep working.
+2. Open **QRes GUI**. If QRes.exe isn't on your PATH or in the install folder,
+   it asks you where it is. Select a game, tick **Switch resolution when this game
    launches** and pick the resolution. **Test for 10 seconds** tries the mode
-   and switches back on its own.
+   and switches back on its own. **Switch back the moment the game closes**
+   skips the few seconds normally allowed for games that restart themselves.
 3. Hook it up:
    - **Steam:** close Steam (the **Close Steam** button asks it to exit), then
      **Apply to Steam**, or **Update Steam launch options** in the top bar to do
@@ -62,6 +63,16 @@ not from the store's own button. The store can't be told to go through the launc
 4. **Game process** (optional for Steam and GOG, required for Epic and Ubisoft):
    the exe name(s) to wait for. Use it when a game hands off to a different exe,
    or leaves a launcher running after you quit.
+
+### Removing it
+
+- **Settings › Remove all hooks…** takes QRes out of every Steam game's launch
+  options (keeping your own options), deletes the game shortcuts and turns
+  switching off.
+- **Uninstall** from *Settings › Apps* (or run `uninstall.ps1` in the install
+  folder) does the same first, so no game is left pointing at a missing
+  launcher. It then removes the program. It offers to close Steam if needed and
+  asks before deleting your settings.
 
 ## Development
 
@@ -95,4 +106,5 @@ Layout:
 - Some anti-cheat launchers dislike being started by another process. If a game
   refuses, remove the hook and use **Test** / manual switching instead.
 - After the game exits, switching back waits about 4 s (3 s to allow for games
-  that restart themselves, plus the configurable restore delay).
+  that restart themselves, plus the configurable restore delay) unless the game
+  has **Switch back the moment the game closes** ticked.

@@ -28,7 +28,7 @@ def _hint(text: str) -> QLabel:
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent, cfg: dict, modes: list[display.Mode]):
+    def __init__(self, parent, cfg: dict, modes: list[display.Mode], on_remove_hooks=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(620)
@@ -76,6 +76,13 @@ class SettingsDialog(QDialog):
         form.addRow("Wait after switching", self.switch_delay)
         form.addRow("Wait before switching back", self.restore_delay)
         form.addRow("Launcher", _browse_row(launcher, logs))
+        if on_remove_hooks:
+            unhook = QPushButton("Remove all hooks…", clicked=on_remove_hooks)
+            row = QHBoxLayout()
+            row.addWidget(unhook)
+            row.addWidget(_hint("Takes QRes out of every Steam game's launch options, deletes the "
+                                "game shortcuts and turns switching off. Resolution choices are kept."), 1)
+            form.addRow("Hooks", row)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)

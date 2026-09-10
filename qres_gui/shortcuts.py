@@ -13,6 +13,7 @@ FOLDERID_DESKTOP = "B4BFCC3A-DB2C-424C-B029-7FE99A87C641"
 FOLDERID_PROGRAMS = "A77F5D77-2E2B-44C3-A6A2-ABA601054A51"
 CREATE_NO_WINDOW = 0x08000000
 START_MENU_FOLDER = "QRes GUI"
+SUFFIX = " (QRes).lnk"
 
 
 class _GUID(ctypes.Structure):
@@ -44,12 +45,21 @@ def start_menu_dir() -> Path:
 def shortcut_path(folder: Path, game_name: str) -> Path:
     # The suffix keeps us from overwriting the store's own shortcut.
     safe = re.sub(r'[<>:"/\\|?*]', "", game_name).strip() or "Game"
-    return folder / f"{safe} (QRes).lnk"
+    return folder / f"{safe}{SUFFIX}"
 
 
 def existing(game_name: str) -> list[Path]:
     paths = [shortcut_path(desktop_dir(), game_name), shortcut_path(start_menu_dir(), game_name)]
     return [p for p in paths if p.exists()]
+
+
+def all_game_shortcuts() -> list[Path]:
+    """Every game shortcut this app has created, on the Desktop and in the Start menu."""
+    found = []
+    for folder in (desktop_dir(), start_menu_dir()):
+        if folder.is_dir():
+            found += sorted(folder.glob(f"*{SUFFIX}"))
+    return found
 
 
 def create(path: Path, target: str, arguments: str = "", working_dir: str = "",
