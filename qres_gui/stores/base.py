@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import re
+import subprocess
 import winreg
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +13,8 @@ STORE_LABELS = {
     "gog": "GOG",
     "epic": "Epic Games",
     "ubisoft": "Ubisoft Connect",
+    "heroic": "Heroic",
+    "amazon": "Amazon Games",
     "manual": "Manual",
 }
 
@@ -29,6 +33,75 @@ class Game:
     @property
     def store_label(self) -> str:
         return STORE_LABELS.get(self.store, self.store)
+
+
+def read_json_lenient(path) -> object | None:
+    """Parse a JSON file, tolerating a BOM, comments and trailing commas (fuel.json is JSON5)."""
+    try:
+        text = Path(path).read_text(encoding="utf-8-sig")
+    except OSError:
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    try:
+        return json.loads(_strip_json5(text))
+    except ValueError:
+        return None
+
+
+def _strip_json5(text: str) -> str:
+    out, i, n = [], 0, len(text)
+    while i < n:
+        if text[i] == '"':  # copy strings verbatim, escapes included
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            i = n if end < 0 else end
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+        else:
+            out.append(text[i])
+            i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+
+def read_fuel(install_dir: str) -> dict | None:
+    """Launch details from an Amazon game's fuel.json: {"path", "args", "cwd"}."""
+    data = read_json_lenient(Path(install_dir) / "fuel.json")
+    main = data.get("Main") if isinstance(data, dict) else None
+    if not isinstance(main, dict) or not main.get("Command"):
+        return None
+    subdir = main.get("WorkingSubdirOverride")
+    args = main.get("Args") or []
+    return {
+        "path": os.path.normpath(os.path.join(install_dir, main["Command"])),
+        "args": subprocess.list2cmdline(args) if isinstance(args, list) else str(args),
+        "cwd": os.path.normpath(os.path.join(install_dir, subdir)) if subdir else install_dir,
+    }
+
+
+def read_goggame_info(install_dir: str, game_id: str) -> dict | None:
+    """Name and primary play task from a GOG game's goggame-<id>.info: {"name", "path", "args", "cwd"}."""
+    data = read_json_lenient(Path(install_dir) / f"goggame-{game_id}.info")
+    if not isinstance(data, dict):
+        return None
+    tasks = [t for t in data.get("playTasks", [])
+             if isinstance(t, dict) and t.get("type") == "FileTask" and t.get("category", "game") == "game"]
+    task = next((t for t in tasks if t.get("isPrimary")), tasks[0] if tasks else None)
+    info = {"name": str(data.get("name") or ""), "path": "", "args": "", "cwd": install_dir}
+    if task and task.get("path"):
+        info["path"] = os.path.normpath(os.path.join(install_dir, task["path"]))
+        info["args"] = str(task.get("arguments") or "")
+        if task.get("workingDir"):
+            info["cwd"] = os.path.normpath(os.path.join(install_dir, task["workingDir"]))
+    return info
 
 
 def reg_values(key) -> dict[str, object]:

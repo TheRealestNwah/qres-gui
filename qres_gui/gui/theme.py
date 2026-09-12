@@ -17,6 +17,8 @@ STORE_COLORS = {
     "gog": "#b066db",
     "epic": "#c9cdd3",
     "ubisoft": "#35c0ae",
+    "heroic": "#e0736a",
+    "amazon": "#d9a14a",
     "manual": "#8b93a1",
 }
 

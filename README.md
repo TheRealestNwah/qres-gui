@@ -16,8 +16,8 @@ the Windows display API directly.
 > launching a Steam game through its launch options (MGS4, including its
 > launcher handing off to the game), switching back when it closes, the Steam
 > overlay, launch options surviving a Steam restart, and the installer. Not
-> yet tested: Steam's *Stop* button, anti-cheat games, and Epic / Ubisoft
-> detection. Expect rough edges, and please report what you find.
+> yet tested: Steam's *Stop* button, anti-cheat games, and Epic / Ubisoft /
+> Heroic / Amazon detection. Expect rough edges, and please report what you find.
 >
 > Windows 10/11 only. The executables aren't code-signed, so SmartScreen may
 > warn the first time you run them.
@@ -40,6 +40,9 @@ How the launcher gets in the loop depends on the store:
 | GOG (Galaxy, Heroic, offline installers) | Desktop / Start menu shortcut that runs the game's exe through the launcher | `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games` |
 | Epic Games | Shortcut that opens the game through Epic's URL, then waits for the game's exe | Launcher manifests (`*.item`) |
 | Ubisoft Connect | Shortcut that opens the game through `uplay://`, then waits for the game's exe (guessed; check it) | `HKLM\…\Ubisoft\Launcher\Installs` |
+| Heroic (Epic, Amazon) | Shortcut that opens the game through `heroic://launch`, then waits for the game's exe | `%APPDATA%\heroic\legendaryConfig\…\installed.json`, `nile_config\…\installed.json` |
+| Heroic (GOG) | Shortcut that runs the game's exe through the launcher (listed once if Windows also knows it as a GOG game) | `%APPDATA%\heroic\gog_store\installed.json` + `goggame-<id>.info` |
+| Amazon Games app | Shortcut that opens the game through `amazon-games://`, then waits for the exe named in its `fuel.json` | `%LOCALAPPDATA%\Amazon Games\…\GameInstallInfo.sqlite` |
 | Anything else | **Add game…** and point at the exe | — |
 
 For non-Steam games, start the game from the `… (QRes)` shortcut (or **Play**),
@@ -90,7 +93,8 @@ until you dismiss it. **Settings › Send test notification** checks they work.
      to paste into *Properties › General › Launch options* by hand instead. A
      timestamped backup of `localconfig.vdf` is kept next to it (last 5).
    - **Other stores:** **Create desktop shortcut** / **Add to Start menu**.
-4. **Game process** (optional for Steam and GOG, required for Epic and Ubisoft):
+4. **Game process** (optional for Steam and GOG, required for games started
+   through a store link: Epic, Ubisoft, Heroic's Epic/Amazon, Amazon Games):
    the exe name(s) to wait for. Use it when a game hands off to a different exe,
    or leaves a launcher running after you quit.
 
@@ -136,9 +140,11 @@ Layout:
 ## Known limitations
 
 - Only the primary display is switched (QRes's own behaviour).
-- EA app, Battle.net, Xbox / Game Pass and Amazon aren't auto-detected. Use
-  **Add game…** for games with a plain exe; Game Pass apps generally can't be
-  started that way.
+- EA app, Battle.net and Xbox / Game Pass aren't auto-detected, nor are
+  standalone legendary / nile installs (only Heroic's). Use **Add game…** for
+  games with a plain exe; Game Pass apps generally can't be started that way.
+- Heroic and Amazon Games detection follows those apps' file formats but
+  hasn't been tried against a real install yet.
 - Some anti-cheat launchers dislike being started by another process. If a game
   refuses, remove the hook and use **Test** / manual switching instead.
 - After the game exits, switching back waits about 4 s (3 s to allow for games
