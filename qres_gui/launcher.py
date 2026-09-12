@@ -553,7 +553,7 @@ def guard(pid: int, token: str | None = None) -> int:
     game_id = data.get("game_id") or ""
     name = _game_name(game_id)
     cause = (f"Playnite closed while {name} was running" if data.get("source") == "playnite"
-             else f"The launcher for {name} closed unexpectedly")
+             else f"The launcher for {name} was closed (for example with Steam's Stop button)")
 
     game = _GameWatch(data)
     waited = game.running()

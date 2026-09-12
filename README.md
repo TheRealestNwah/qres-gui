@@ -14,11 +14,13 @@ the Windows display API directly.
 > are marked as pre-releases on GitHub until the first stable release.
 > Verified on real hardware:
 > launching a Steam game through its launch options (MGS4, including its
-> launcher handing off to the game), switching back when it closes, the Steam
-> overlay, launch options surviving a Steam restart, and the installer. Not
-> yet tested: Steam's *Stop* button, anti-cheat games, the Playnite
-> integration with real games, and Epic / Ubisoft / Heroic / Amazon /
-> legendary / nile detection. Expect rough edges, and please report what you find.
+> launcher handing off to the game), switching back when it closes, Steam's
+> *Stop* button (closes the game and switches back), the Steam overlay,
+> launch options surviving a Steam restart, starting that game from Playnite
+> (one switch, back on quit), and the installer. Not yet tested: anti-cheat
+> games, Playnite with non-Steam plugins, and Epic / Ubisoft / Heroic /
+> Amazon / legendary / nile detection. Expect rough edges, and please report
+> what you find.
 >
 > Windows 10/11 only. The executables aren't code-signed, so SmartScreen may
 > warn the first time you run them.
