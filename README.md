@@ -10,7 +10,7 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
-> **Status: early pre-release (0.2.0).** Versions go 0.1.0, 0.2.0, … and
+> **Status: early pre-release (0.3.0).** Versions go 0.1.0, 0.2.0, … and
 > are marked as pre-releases on GitHub until the first stable release.
 > Verified on real hardware:
 > launching a Steam game through its launch options (MGS4, including its
