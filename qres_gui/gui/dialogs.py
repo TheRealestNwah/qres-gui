@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
-from .. import display, notify, paths, playnite
+from .. import __version__, display, notify, paths, playnite
 from . import theme
 
 
@@ -21,6 +21,11 @@ def _browse_row(edit: QLineEdit, button: QPushButton) -> QWidget:
     layout.addWidget(edit, 1)
     layout.addWidget(button)
     return row
+
+
+def licenses_folder():
+    """This program's and its third-party components' license texts."""
+    return paths.app_folder() / "licenses"
 
 
 def _hint(text: str) -> QLabel:
@@ -70,7 +75,9 @@ class SettingsDialog(QDialog):
         form.setVerticalSpacing(10)
         form.addRow("QRes.exe", _browse_row(self.qres, browse))
         form.addRow("Desktop resolution", self.desktop)
-        form.addRow("", _hint("What \"Restore desktop resolution\" switches back to if nothing else is recorded."))
+        form.addRow("", _hint("Your primary display's normal resolution: what \"Restore desktop resolution\" "
+                              "switches back to if nothing else is recorded. QRes only ever changes the "
+                              "primary display."))
         form.addRow("New games default to", self.default_size)
         form.addRow("", self.temporary)
         form.addRow("", _hint("Keeps a crash or power cut from leaving Windows at the game's resolution after a reboot."))
@@ -95,6 +102,13 @@ class SettingsDialog(QDialog):
             row.addWidget(_hint("Takes QRes out of every Steam game's launch options and Playnite's scripts, "
                                 "deletes the game shortcuts and turns switching off. Resolution choices are kept."), 1)
             form.addRow("Hooks", row)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel(f"QRes GUI {__version__} · MIT license"))
+        row.addWidget(QPushButton("Licenses…", clicked=lambda: QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(licenses_folder())))))
+        row.addStretch()
+        form.addRow("About", row)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)

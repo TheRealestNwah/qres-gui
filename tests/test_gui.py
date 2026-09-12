@@ -58,6 +58,7 @@ def env(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(display, "list_modes", lambda: list(MODES))
     monkeypatch.setattr(display, "current_mode", lambda: DESKTOP)
     monkeypatch.setattr(display, "find_qres", lambda *a: r"C:\Tools\QRes.exe")
+    monkeypatch.setattr(display, "monitor_count", lambda: 1)
     desktop, menu = tmp_path / "Desktop", tmp_path / "Programs" / "QRes GUI"
     desktop.mkdir()
     monkeypatch.setattr(shortcuts, "desktop_dir", lambda: desktop)
@@ -220,6 +221,15 @@ def test_removing_a_playnite_game_forgets_it(win, monkeypatch):
     assert forgotten == ["abc"] and "playnite:abc" not in config.load()["games"]
 
 
+def test_says_it_only_switches_the_primary_display(win, monkeypatch):
+    select(win, "steam:10")
+    assert win.detail.primary_hint.text() == "QRes switches the primary display only."
+    monkeypatch.setattr(display, "monitor_count", lambda: 2)
+    select(win, "gog:1453375253")
+    assert win.detail.primary_hint.text().startswith("You have 2 displays. QRes only switches the primary one")
+    assert "Primary display" in [lbl.text() for lbl in win.findChildren(main_window.QLabel)]
+
+
 # --- banner, dialogs, hooks -----------------------------------------------------------
 
 def test_problem_banner_shows_and_dismisses(win):
@@ -238,6 +248,8 @@ def test_settings_dialog_applies(win):
     dialog.temporary.setChecked(False)
     dialog.switch_delay.setValue(2.5)
     dialog.apply_to(win.cfg)
+    from qres_gui.gui.dialogs import licenses_folder
+    assert (licenses_folder() / "LGPL-3.0.txt").is_file()
     assert win.cfg["qres_path"] == r"D:\Tools\QRes.exe"
     assert win.cfg["default_target"] == {"width": 1920, "height": 1080, "refresh": 0}
     assert win.cfg["temporary"] is False and win.cfg["switch_delay"] == 2.5

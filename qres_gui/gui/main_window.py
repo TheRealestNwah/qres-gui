@@ -83,7 +83,7 @@ class MainWindow(QMainWindow):
         bar.addWidget(logo)
         col = QVBoxLayout()
         col.setSpacing(0)
-        col.addWidget(QLabel("Desktop resolution", objectName="caption"))
+        col.addWidget(QLabel("Primary display", objectName="caption"))
         self.desktop_label = QLabel(objectName="desktopMode")
         col.addWidget(self.desktop_label)
         bar.addLayout(col)

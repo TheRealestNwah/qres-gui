@@ -103,6 +103,8 @@ class DetailPanel(QScrollArea):
         layout.addWidget(self.quick)
         self.test_btn = QPushButton("Test for 10 seconds", clicked=self._test)
         layout.addLayout(_row(self.test_btn, _muted("Switches, then comes back on its own.")))
+        self.primary_hint = _muted()
+        layout.addWidget(self.primary_hint)
         v.addWidget(box)
 
         # Steam
@@ -205,6 +207,14 @@ class DetailPanel(QScrollArea):
         self.enabled.setChecked(bool(entry.get("enabled")))
         self.quick.setChecked(bool(entry.get("quick_restore")))
         self._fill_resolutions(entry["width"], entry["height"])
+        monitors = display.monitor_count()
+        if monitors > 1:
+            theme.set_state(self.primary_hint, "warn",
+                            f"You have {monitors} displays. QRes only switches the primary one, "
+                            "so run the game there.")
+        else:
+            self.primary_hint.setStyleSheet("")
+            self.primary_hint.setText("QRes switches the primary display only.")
         self._fill_rates(entry["width"], entry["height"], entry.get("refresh", 0))
         self.watch.setText(", ".join(entry.get("watch", [])))
 

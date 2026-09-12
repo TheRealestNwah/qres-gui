@@ -18,7 +18,8 @@ $zip = Join-Path $out "$name.zip"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 robocopy (Join-Path $root "dist\QResGUI") $stage /E /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "Copying the build failed (robocopy exit code $LASTEXITCODE)." }
-foreach ($file in "install.ps1", "installer\install.cmd", "installer\uninstall.ps1", "README.md", "LICENSE") {
+foreach ($file in "install.ps1", "installer\install.cmd", "installer\uninstall.ps1", "README.md", "LICENSE",
+                  "THIRD_PARTY_NOTICES.md", "CHANGELOG.md") {
     Copy-Item (Join-Path $root $file) $stage
 }
 Set-Content (Join-Path $stage "VERSION") $version -NoNewline

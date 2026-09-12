@@ -108,6 +108,12 @@ def _devmode(index: int) -> DEVMODEW | None:
     return dm
 
 
+def monitor_count() -> int:
+    """How many displays are connected. QRes (and QRes GUI) only ever changes the primary one."""
+    SM_CMONITORS = 80
+    return int(_user32.GetSystemMetrics(SM_CMONITORS)) or 1
+
+
 def current_mode() -> Mode:
     dm = _devmode(ENUM_CURRENT_SETTINGS)
     if dm is None:
