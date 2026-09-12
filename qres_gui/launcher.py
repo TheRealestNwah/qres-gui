@@ -612,7 +612,9 @@ def playnite_start(payload: str) -> int:
     cfg = config.load()
     game_id, entry = playnite.match(cfg, info)
     if not game_id:
-        log.info("no QRes profile for Playnite game %r (%s)", info.get("name"), info.get("installDir"))
+        log.info("no QRes profile for Playnite game %r (%s); listing it in QRes GUI",
+                 info.get("name"), info.get("installDir"))
+        playnite.remember(info)
         return 0
     if not entry.get("enabled"):
         log.info("switching is off for %s", game_id)

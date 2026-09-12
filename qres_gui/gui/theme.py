@@ -21,6 +21,10 @@ STORE_COLORS = {
     "amazon": "#d9a14a",
     "legendary": "#c9cdd3",
     "nile": "#d9a14a",
+    "ea": "#ff6b5a",
+    "battlenet": "#3fa8ff",
+    "xbox": "#62c462",
+    "playnite": "#b98cff",
     "manual": "#8b93a1",
 }
 

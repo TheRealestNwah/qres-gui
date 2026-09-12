@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from . import amazon, epic, gog, heroic, standalone, ubisoft
+from . import amazon, battlenet, ea, epic, gog, heroic, playnite_games, standalone, ubisoft, xbox
 from .base import STORE_LABELS, Game, guess_main_exe
 from .steam import SteamClient
 
@@ -19,6 +19,9 @@ def detect_all(steam: SteamClient) -> tuple[list[Game], list[str]]:
         ("Heroic", heroic.installed_games),
         ("Amazon Games", amazon.installed_games),
         ("Legendary / nile / GOG OSS", standalone.installed_games),
+        ("EA app", ea.installed_games),
+        ("Battle.net", battlenet.installed_games),
+        ("Xbox", xbox.installed_games),
     ]
     games: list[Game] = []
     errors: list[str] = []
@@ -34,4 +37,9 @@ def detect_all(steam: SteamClient) -> tuple[list[Game], list[str]]:
     unique: dict[str, Game] = {}
     for game in games:
         unique.setdefault(game.id, game)
-    return list(unique.values()), errors
+    games = list(unique.values())
+    try:  # last, so games another store already lists aren't repeated
+        games += playnite_games.games(games)
+    except Exception as exc:
+        errors.append(f"Playnite: {exc}")
+    return games, errors

@@ -17,6 +17,10 @@ STORE_LABELS = {
     "amazon": "Amazon Games",
     "legendary": "Epic (Legendary)",
     "nile": "Amazon (nile)",
+    "ea": "EA app",
+    "battlenet": "Battle.net",
+    "xbox": "Xbox",
+    "playnite": "Playnite",
     "manual": "Manual",
 }
 
@@ -183,6 +187,26 @@ def reg_subkeys(hive, path: str) -> list[tuple[str, dict]]:
                 pass
             i += 1
     return out
+
+
+UNINSTALL_KEYS = (
+    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+    (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+)
+
+
+def uninstall_entries() -> list[tuple[str, dict]]:
+    """(key name, lower-cased values) for every "Apps & features" entry, both registry views and HKCU."""
+    out = []
+    for hive, path in UNINSTALL_KEYS:
+        out.extend(reg_subkeys(hive, path))
+    return out
+
+
+def clean_path(value) -> str:
+    """Registry paths are sometimes quoted or padded."""
+    return os.path.normpath(str(value).strip().strip('"').strip()) if value and str(value).strip() else ""
 
 
 _JUNK_EXE = re.compile(

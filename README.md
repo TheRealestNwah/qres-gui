@@ -10,7 +10,7 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
-> **Status: early pre-release (0.4.0).** Versions go 0.1.0, 0.2.0, … and
+> **Status: early pre-release (0.5.0).** Versions go 0.1.0, 0.2.0, … and
 > are marked as pre-releases on GitHub until the first stable release.
 > Verified on real hardware:
 > launching a Steam game through its launch options (MGS4, including its
@@ -19,7 +19,7 @@ the Windows display API directly.
 > launch options surviving a Steam restart, starting that game from Playnite
 > (one switch, back on quit), and the installer. Not yet tested: anti-cheat
 > games, Playnite with non-Steam plugins, and Epic / Ubisoft / Heroic /
-> Amazon / legendary / nile detection. Expect rough edges, and please report
+> Amazon / legendary / nile / EA / Battle.net / Xbox detection. Expect rough edges, and please report
 > what you find.
 >
 > Windows 10/11 only. The executables aren't code-signed, so SmartScreen may
@@ -48,7 +48,10 @@ How the launcher gets in the loop depends on the store:
 | Amazon Games app | Shortcut that opens the game through `amazon-games://`, then waits for the exe named in its `fuel.json` | `%LOCALAPPDATA%\Amazon Games\…\GameInstallInfo.sqlite` |
 | Legendary / nile, e.g. through Playnite's Legendary and Nile plugins | Started from Playnite (see below); QRes can't start these itself | `%USERPROFILE%\.config\legendary\installed.json`, `%APPDATA%\nile\installed.json` |
 | GOG OSS (Playnite plugin) | Shortcut that runs the game's exe (listed once if Windows also knows it as a GOG game) | `%APPDATA%\Playnite\ExtensionsData\03689811-…\installed.json` |
-| **Anything started from Playnite** | Playnite's global game scripts (see below) | Matched to a QRes profile by store ID, install folder or name |
+| EA app | Shortcut that runs the game's exe (it signs in through the EA app), then waits for that exe | "Apps & features" entries with `__Installer\installerdata.xml` |
+| Battle.net | Started from Battle.net or Playnite | "Apps & features" entries using Battle.net's uninstaller (`--uid=`) |
+| Xbox app / PC Game Pass | Shortcut that opens the game through `shell:AppsFolder`, then waits for its exe | `.GamingRoot` on each drive + each game's `MicrosoftGame.config` |
+| **Anything started from Playnite** | Playnite's global game scripts (see below) | Matched to a QRes profile by store ID, install folder or name. Games QRes doesn't know yet are listed automatically the first time Playnite starts them |
 | Anything else | **Add game…** and point at the exe | — |
 
 For non-Steam games, start the game from the `… (QRes)` shortcut (or **Play**),
@@ -170,12 +173,11 @@ Layout:
 ## Known limitations
 
 - Only the primary display is switched (QRes's own behaviour).
-- EA app, Battle.net and Xbox / Game Pass aren't auto-detected. Use **Add
-  game…** for games with a plain exe; Game Pass apps generally can't be
-  started that way. Games from any store work through Playnite, though, as
-  long as they have a QRes profile (e.g. via **Add game…**).
-- Heroic, Amazon Games and standalone legendary / nile detection follows
-  those tools' file formats but hasn't been tried against a real install yet.
+- Games from any store work through Playnite: start one there once and it
+  appears in QRes GUI, ready to set up.
+- Heroic, Amazon Games, standalone legendary / nile, EA app, Battle.net and
+  Xbox detection follows those tools' file formats but hasn't been tried
+  against a real install yet.
 - The Playnite integration relies on Playnite noticing when the game exits.
   If a plugin reports the game as stopped too early, the resolution switches
   back early too.

@@ -92,6 +92,56 @@ def owner_pid(pid: int) -> int | None:
     return None
 
 
+# --- games Playnite has started -------------------------------------------------
+# The launcher records games Playnite starts that have no QRes profile, so they
+# show up in QRes GUI ready to set up. Kept in their own file: the GUI rewrites
+# config.json from memory, and the launcher mustn't race it.
+
+def seen_path() -> Path:
+    from . import paths
+    return paths.app_dir() / "playnite_games.json"
+
+
+def seen() -> dict[str, dict]:
+    try:
+        data = json.loads(seen_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _store_seen(data: dict) -> None:
+    path = seen_path()
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def remember(info: dict) -> None:
+    game_id = str(info.get("id") or "")
+    if not game_id:
+        return
+    data = seen()
+    data[game_id] = {
+        "name": str(info.get("name") or ""),
+        "installDir": str(info.get("installDir") or ""),
+        "gameId": str(info.get("gameId") or ""),
+        "pluginId": str(info.get("pluginId") or "").lower(),
+        "seen": time.time(),
+    }
+    _store_seen(data)
+
+
+def forget(game_id: str) -> None:
+    data = seen()
+    if data.pop(game_id, None) is not None:
+        _store_seen(data)
+
+
+def start_uri(game_id: str) -> str:
+    return f"playnite://playnite/start/{game_id}"
+
+
 # --- matching a Playnite game to a QRes profile --------------------------------
 
 def _norm_dir(path: str) -> str:
@@ -105,6 +155,9 @@ def _norm_name(name: str) -> str:
 def match(cfg: dict, info: dict) -> tuple[str | None, dict | None]:
     """Find the QRes profile for a Playnite game: store id, then install folder, then name."""
     games = cfg.get("games", {})
+    own = f"playnite:{info.get('id')}"  # a profile made for a game Playnite started earlier
+    if own in games:
+        return own, games[own]
     prefix = PLUGIN_PREFIXES.get(str(info.get("pluginId", "")).lower())
     game_id = str(info.get("gameId") or "")
     if prefix and game_id:

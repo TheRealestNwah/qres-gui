@@ -192,6 +192,17 @@ class MainWindow(QMainWindow):
             f"<span style='color:{theme.MUTED}'>&nbsp;&nbsp;·&nbsp;&nbsp;{when}{more}</span>")
         self.event_bar.show()
 
+    def _pick_up_playnite_games(self) -> None:
+        """Rescan when Playnite has started a game QRes didn't know, so it appears while the GUI is open."""
+        try:
+            mtime = playnite.seen_path().stat().st_mtime
+        except OSError:
+            mtime = None
+        previous = getattr(self, "_seen_mtime", "unset")
+        self._seen_mtime = mtime
+        if previous != "unset" and mtime != previous:
+            self.rescan()
+
     def _dismiss_events(self) -> None:
         times = [float(e.get("time", 0)) for e in notify.read_events()]
         self.cfg["events_seen"] = max(times, default=time.time())
@@ -500,7 +511,10 @@ class MainWindow(QMainWindow):
             self.tree.setCurrentItem(self.items[game_id])
 
     def remove_manual_game(self, game: Game) -> None:
+        """Remove a hand-added game, or one only known because Playnite started it."""
         self.cfg["games"].pop(game.id, None)
+        if game.store == "playnite":
+            playnite.forget(game.id.split(":", 1)[1])
         self._save_now()
         self.detail.show_game(None)
         self.rescan()
@@ -633,6 +647,7 @@ class MainWindow(QMainWindow):
 
     def _poll_state(self) -> None:
         self._refresh_events()
+        self._pick_up_playnite_games()
         try:
             current = display.current_mode()
         except display.DisplayError:

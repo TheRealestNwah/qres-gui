@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from .. import display, paths, shortcuts
+from .. import display, paths, playnite, shortcuts
 from ..stores import Game, steam
 from . import theme
 from .dialogs import TestResolutionDialog
@@ -212,7 +212,7 @@ class DetailPanel(QScrollArea):
         self.steam_box.setVisible(is_steam)
         self.shortcut_box.setVisible(not is_steam)
         self.manual_form.setVisible(is_manual)
-        self.remove_btn.setVisible(is_manual)
+        self.remove_btn.setVisible(is_manual or game.store == "playnite")
         if is_manual:
             launch = entry.get("launch") or {}
             self.manual_exe.setText(launch.get("path", ""))
@@ -434,8 +434,12 @@ class DetailPanel(QScrollArea):
         elif launch.get("type") == "uri":
             self.target_label.setText(f"Starts through {self.game.store_label}  ({launch['uri']})")
         else:
-            self.target_label.setText(f"QRes can't start {self.game.store_label} games itself; they need "
-                                      "the tool that installed them. Start it from Playnite instead.")
+            if self.game.store == "playnite":
+                self.target_label.setText("Found because Playnite started it. Start it from Playnite; "
+                                          "Play below asks Playnite to start it.")
+            else:
+                self.target_label.setText(f"QRes can't start {self.game.store_label} games itself; they need "
+                                          "the tool that installed them. Start it from Playnite instead.")
         self.target_label.setVisible(self.game.store != "manual")
 
         found = shortcuts.existing(self.game.name)
@@ -465,6 +469,10 @@ class DetailPanel(QScrollArea):
         self.remove_shortcuts_btn.setVisible(bool(found))
         for button in (self.desktop_btn, self.startmenu_btn, self.play_btn):
             button.setVisible(not playnite_only)
+        if self.game.store == "playnite":  # Playnite can start it; its scripts do the switching
+            self.play_btn.setVisible(True)
+            self.play_btn.setEnabled(True)
+        self.play_btn.setText("Play in Playnite" if self.game.store == "playnite" else "Play")
         if playnite_only:
             hint = ""
         elif self.game.store != "manual":
@@ -530,6 +538,10 @@ class DetailPanel(QScrollArea):
     def _play(self) -> None:
         self._ensure_enabled()
         self.win.refresh_rows(self.game.id)
+        if self.game.store == "playnite":
+            os.startfile(playnite.start_uri(self.game.id.split(":", 1)[1]))
+            self.win.statusBar().showMessage(f"Asked Playnite to start {self.game.name}…", 6000)
+            return
         subprocess.Popen(paths.launcher_command() + ["run", self.game.id], creationflags=DETACHED_PROCESS,
                          close_fds=True)
         self.win.statusBar().showMessage(f"Starting {self.game.name}…", 6000)
