@@ -15,6 +15,8 @@ STORE_LABELS = {
     "ubisoft": "Ubisoft Connect",
     "heroic": "Heroic",
     "amazon": "Amazon Games",
+    "legendary": "Epic (Legendary)",
+    "nile": "Amazon (nile)",
     "manual": "Manual",
 }
 
@@ -102,6 +104,49 @@ def read_goggame_info(install_dir: str, game_id: str) -> dict | None:
         if task.get("workingDir"):
             info["cwd"] = os.path.normpath(os.path.join(install_dir, task["workingDir"]))
     return info
+
+
+def legendary_installs(installed_json) -> list[dict]:
+    """Windows base games from a legendary installed.json: [{"app", "title", "install", "exe"}]."""
+    data = read_json_lenient(installed_json)
+    out = []
+    for app, info in (data.items() if isinstance(data, dict) else []):
+        if not isinstance(info, dict) or info.get("is_dlc"):
+            continue
+        if str(info.get("platform") or "windows").lower() not in ("windows", "win32"):
+            continue
+        install = str(info.get("install_path") or "")
+        if not os.path.isdir(install):
+            continue
+        exe = os.path.normpath(os.path.join(install, info["executable"])) if info.get("executable") else ""
+        out.append({"app": app, "title": str(info.get("title") or app), "install": install, "exe": exe})
+    return out
+
+
+def nile_installs(config_dir) -> list[dict]:
+    """Games from a nile config folder (installed.json + library.json titles):
+    [{"app", "title", "install", "exe"}]."""
+    config_dir = Path(config_dir)
+    installed = read_json_lenient(config_dir / "installed.json")
+    if not isinstance(installed, list):
+        return []
+    titles = {}
+    library = read_json_lenient(config_dir / "library.json")
+    for item in (library if isinstance(library, list) else []):
+        product = item.get("product") if isinstance(item, dict) else None
+        if isinstance(product, dict) and product.get("id"):
+            titles[product["id"]] = str(product.get("title") or "")
+    out = []
+    for entry in installed:
+        if not isinstance(entry, dict):
+            continue
+        app, install = entry.get("id"), str(entry.get("path") or "")
+        if not app or not os.path.isdir(install):
+            continue
+        fuel = read_fuel(install)
+        out.append({"app": app, "title": titles.get(app) or os.path.basename(install), "install": install,
+                    "exe": fuel["path"] if fuel else guess_main_exe(install)})
+    return out
 
 
 def reg_values(key) -> dict[str, object]:

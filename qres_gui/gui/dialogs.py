@@ -7,10 +7,11 @@ from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
-from .. import display, notify, paths
+from .. import display, notify, paths, playnite
+from . import theme
 
 
 def _browse_row(edit: QLineEdit, button: QPushButton) -> QWidget:
@@ -28,7 +29,7 @@ def _hint(text: str) -> QLabel:
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent, cfg: dict, modes: list[display.Mode], on_remove_hooks=None):
+    def __init__(self, parent, cfg: dict, modes: list[display.Mode], on_remove_hooks=None, on_playnite=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(620)
@@ -82,12 +83,17 @@ class SettingsDialog(QDialog):
         row.addWidget(_hint("Launcher problems show up as Windows notifications. While a fullscreen game "
                             "has focus, Windows holds them in the notification centre instead."), 1)
         form.addRow("Notifications", row)
+        if on_playnite:
+            row = QHBoxLayout()
+            row.addWidget(QPushButton("Playnite integration…", clicked=on_playnite))
+            row.addWidget(_hint("Switch resolution for games started from Playnite, whatever the store."), 1)
+            form.addRow("Playnite", row)
         if on_remove_hooks:
             unhook = QPushButton("Remove all hooks…", clicked=on_remove_hooks)
             row = QHBoxLayout()
             row.addWidget(unhook)
-            row.addWidget(_hint("Takes QRes out of every Steam game's launch options, deletes the "
-                                "game shortcuts and turns switching off. Resolution choices are kept."), 1)
+            row.addWidget(_hint("Takes QRes out of every Steam game's launch options and Playnite's scripts, "
+                                "deletes the game shortcuts and turns switching off. Resolution choices are kept."), 1)
             form.addRow("Hooks", row)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -123,6 +129,94 @@ class SettingsDialog(QDialog):
         cfg["temporary"] = self.temporary.isChecked()
         cfg["switch_delay"] = self.switch_delay.value()
         cfg["restore_delay"] = self.restore_delay.value()
+
+
+class PlayniteDialog(QDialog):
+    """Add QRes's lines to Playnite's global game scripts, or show them for pasting in by hand."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("Playnite integration")
+        self.setMinimumWidth(720)
+        self.cmd = paths.launcher_command()
+        pre, post = playnite.scripts(self.cmd)
+
+        intro = QLabel(
+            "Playnite can run a script before every game starts and after it exits. With QRes's lines "
+            "added there, any game you start from Playnite switches resolution if it's set up in QRes GUI "
+            "with switching on. It's matched by store ID, install folder or name, whichever plugin "
+            "Playnite uses to start it. Steam games that also have QRes launch options switch only once.",
+            wordWrap=True)
+        self.status = QLabel(wordWrap=True)
+        self.install_btn = QPushButton("Add to Playnite", objectName="primary", clicked=self._install)
+        self.remove_btn = QPushButton("Remove from Playnite", clicked=self._remove)
+        buttons = QHBoxLayout()
+        buttons.addWidget(self.install_btn)
+        buttons.addWidget(self.remove_btn)
+        buttons.addStretch()
+
+        manual = QLabel("To add them by hand instead: Playnite › Main menu › Settings › Scripts. "
+                        "Add the first block to \"Execute before starting a game\" and the second to "
+                        "\"Execute after exiting a game\", after any lines already there.",
+                        objectName="muted", wordWrap=True)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.addWidget(intro)
+        layout.addWidget(self.status)
+        layout.addLayout(buttons)
+        layout.addSpacing(6)
+        layout.addWidget(manual)
+        for title, text in (("Before starting a game", pre), ("After exiting a game", post)):
+            box = QPlainTextEdit(text, readOnly=True)
+            box.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+            lines = text.count("\n") + 1
+            box.setMinimumHeight(box.fontMetrics().lineSpacing() * lines + 2 * box.frameWidth()
+                                 + 2 * int(box.document().documentMargin())
+                                 + box.horizontalScrollBar().sizeHint().height() + 6)
+            box.setMaximumHeight(box.minimumHeight())
+            copy = QPushButton(f"Copy \"{title}\"", clicked=lambda _=False, t=text: self._copy(t))
+            layout.addWidget(box)
+            layout.addWidget(copy, alignment=Qt.AlignmentFlag.AlignLeft)
+        close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close.rejected.connect(self.reject)
+        layout.addWidget(close)
+        self._refresh()
+        self.resize(max(self.sizeHint().width(), 860), self.sizeHint().height())
+
+    def _refresh(self) -> None:
+        state = playnite.state(self.cmd)
+        running = playnite.is_running()
+        texts = {
+            "missing": ("error", "Playnite wasn't found on this PC."),
+            "none": ("off", "Not added to Playnite yet."),
+            "installed": ("ok", "✓  Added to Playnite's scripts."),
+            "outdated": ("warn", "Playnite's scripts point at an older QRes launcher location. Add them again to update."),
+        }
+        kind, text = texts[state]
+        if running and state != "missing":
+            text += "  Playnite is running; close it to change its scripts (it saves its settings on exit)."
+        theme.set_state(self.status, kind, text)
+        self.install_btn.setText("Update in Playnite" if state == "outdated" else "Add to Playnite")
+        self.install_btn.setEnabled(state in ("none", "outdated") and not running)
+        self.remove_btn.setEnabled(state in ("installed", "outdated") and not running)
+
+    def _install(self) -> None:
+        self._change(lambda: playnite.install(self.cmd), "Added. Start Playnite again and play.")
+
+    def _remove(self) -> None:
+        self._change(playnite.uninstall, "Removed QRes's lines from Playnite's scripts.")
+
+    def _change(self, action, done: str) -> None:
+        try:
+            backup = action()
+        except Exception as exc:
+            QMessageBox.warning(self, "Playnite integration", str(exc))
+        else:
+            QMessageBox.information(self, "Playnite integration", f"{done}\n\nBackup of the old settings: {backup.name}")
+        self._refresh()
+
+    def _copy(self, text: str) -> None:
+        QApplication.clipboard().setText(text)
 
 
 class AddGameDialog(QDialog):

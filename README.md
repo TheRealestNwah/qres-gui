@@ -10,14 +10,15 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
-> **Status: early pre-release (0.3.0).** Versions go 0.1.0, 0.2.0, … and
+> **Status: early pre-release (0.4.0).** Versions go 0.1.0, 0.2.0, … and
 > are marked as pre-releases on GitHub until the first stable release.
 > Verified on real hardware:
 > launching a Steam game through its launch options (MGS4, including its
 > launcher handing off to the game), switching back when it closes, the Steam
 > overlay, launch options surviving a Steam restart, and the installer. Not
-> yet tested: Steam's *Stop* button, anti-cheat games, and Epic / Ubisoft /
-> Heroic / Amazon detection. Expect rough edges, and please report what you find.
+> yet tested: Steam's *Stop* button, anti-cheat games, the Playnite
+> integration with real games, and Epic / Ubisoft / Heroic / Amazon /
+> legendary / nile detection. Expect rough edges, and please report what you find.
 >
 > Windows 10/11 only. The executables aren't code-signed, so SmartScreen may
 > warn the first time you run them.
@@ -43,10 +44,30 @@ How the launcher gets in the loop depends on the store:
 | Heroic (Epic, Amazon) | Shortcut that opens the game through `heroic://launch`, then waits for the game's exe | `%APPDATA%\heroic\legendaryConfig\…\installed.json`, `nile_config\…\installed.json` |
 | Heroic (GOG) | Shortcut that runs the game's exe through the launcher (listed once if Windows also knows it as a GOG game) | `%APPDATA%\heroic\gog_store\installed.json` + `goggame-<id>.info` |
 | Amazon Games app | Shortcut that opens the game through `amazon-games://`, then waits for the exe named in its `fuel.json` | `%LOCALAPPDATA%\Amazon Games\…\GameInstallInfo.sqlite` |
+| Legendary / nile, e.g. through Playnite's Legendary and Nile plugins | Started from Playnite (see below); QRes can't start these itself | `%USERPROFILE%\.config\legendary\installed.json`, `%APPDATA%\nile\installed.json` |
+| GOG OSS (Playnite plugin) | Shortcut that runs the game's exe (listed once if Windows also knows it as a GOG game) | `%APPDATA%\Playnite\ExtensionsData\03689811-…\installed.json` |
+| **Anything started from Playnite** | Playnite's global game scripts (see below) | Matched to a QRes profile by store ID, install folder or name |
 | Anything else | **Add game…** and point at the exe | — |
 
 For non-Steam games, start the game from the `… (QRes)` shortcut (or **Play**),
 not from the store's own button. The store can't be told to go through the launcher.
+
+### Playnite
+
+**Settings › Playnite integration… › Add to Playnite** adds a short block to
+Playnite's global *before starting a game* and *after exiting a game* scripts,
+after any lines of your own. Playnite has to be closed, because it saves its
+settings when it exits, and a backup is kept. Or copy the blocks from the same
+dialog into Playnite › Settings › Scripts yourself.
+
+From then on, starting a game in Playnite, through any library plugin, switches
+the resolution if the game has a QRes profile with switching on. The profile
+is found by store ID, then install folder, then name. Playnite starts and
+tracks the game and runs the exit script when it stops, which switches back.
+If Playnite closes mid-game, the guard switches back.
+
+A Steam game that also has QRes launch options switches only once when started
+from Playnite, and still switches when started from Steam directly.
 
 ### Safety nets
 
@@ -101,8 +122,8 @@ until you dismiss it. **Settings › Send test notification** checks they work.
 ### Removing it
 
 - **Settings › Remove all hooks…** takes QRes out of every Steam game's launch
-  options (keeping your own options), deletes the game shortcuts and turns
-  switching off.
+  options (keeping your own options) and out of Playnite's scripts (keeping
+  your own lines), deletes the game shortcuts and turns switching off.
 - **Uninstall** from *Settings › Apps* (or run `uninstall.ps1` in the install
   folder) does the same first, so no game is left pointing at a missing
   launcher. It then removes the program. It offers to close Steam if needed and
@@ -132,6 +153,7 @@ Layout:
 - `qres_gui/launcher.py`: the `run` / `restore` / `remove-hooks` / `guard` entry points
 - `qres_gui/hooks.py`: finds and removes Steam launch options and game shortcuts
 - `qres_gui/notify.py`: toast notifications and the event record behind the GUI banner
+- `qres_gui/playnite.py`: Playnite script blocks, matching Playnite games to profiles
 - `qres_gui/vdf.py`: Valve KeyValues reader/writer (round-trips Steam's files byte for byte)
 - `qres_gui/stores/`: per-store detection; `steam.py` also edits launch options
 - `qres_gui/gui/`: PySide6 UI
@@ -140,11 +162,15 @@ Layout:
 ## Known limitations
 
 - Only the primary display is switched (QRes's own behaviour).
-- EA app, Battle.net and Xbox / Game Pass aren't auto-detected, nor are
-  standalone legendary / nile installs (only Heroic's). Use **Add game…** for
-  games with a plain exe; Game Pass apps generally can't be started that way.
-- Heroic and Amazon Games detection follows those apps' file formats but
-  hasn't been tried against a real install yet.
+- EA app, Battle.net and Xbox / Game Pass aren't auto-detected. Use **Add
+  game…** for games with a plain exe; Game Pass apps generally can't be
+  started that way. Games from any store work through Playnite, though, as
+  long as they have a QRes profile (e.g. via **Add game…**).
+- Heroic, Amazon Games and standalone legendary / nile detection follows
+  those tools' file formats but hasn't been tried against a real install yet.
+- The Playnite integration relies on Playnite noticing when the game exits.
+  If a plugin reports the game as stopped too early, the resolution switches
+  back early too.
 - Some anti-cheat launchers dislike being started by another process. If a game
   refuses, remove the hook and use **Test** / manual switching instead.
 - After the game exits, switching back waits about 4 s (3 s to allow for games

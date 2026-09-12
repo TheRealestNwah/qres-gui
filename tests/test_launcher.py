@@ -66,7 +66,7 @@ def test_switch_and_restore_are_paired(monkeypatch):
     monkeypatch.setattr(display, "current_mode", lambda: desktop)
     monkeypatch.setattr(display, "resolve", lambda w, h, r, d: display.Mode(w, h, d.refresh))
     monkeypatch.setattr(display, "set_mode", lambda mode, qres, temporary: calls.append(mode) or "stub")
-    monkeypatch.setattr(launcher, "_spawn_guard", lambda: None)
+    monkeypatch.setattr(launcher, "_spawn_guard", lambda *a: None)
     cfg = config.load()
     cfg.update(switch_delay=0, restore_delay=0)
     cfg["games"]["steam:1"] = {"enabled": True, "width": 2560, "height": 1440, "refresh": 0, "watch": []}
@@ -98,7 +98,7 @@ def test_quick_restore_skips_the_waits(monkeypatch, tmp_path, quick, minimum, ma
     monkeypatch.setattr(display, "resolve", lambda w, h, r, d: display.Mode(w, h, d.refresh))
     monkeypatch.setattr(display, "set_mode",
                         lambda mode, qres, temporary: mode == desktop and restored_at.append(time.monotonic()))
-    monkeypatch.setattr(launcher, "_spawn_guard", lambda: None)
+    monkeypatch.setattr(launcher, "_spawn_guard", lambda *a: None)
     cfg = config.load()
     cfg.update(switch_delay=0, restore_delay=1.0)
     cfg["games"]["steam:1"] = {"enabled": True, "width": 2560, "height": 1440, "refresh": 0,

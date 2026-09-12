@@ -59,7 +59,7 @@ def test_switch_failure_notifies_and_still_launches(isolated, monkeypatch):
         return "stub"
 
     monkeypatch.setattr(display, "set_mode", failing_set_mode)
-    monkeypatch.setattr(launcher, "_spawn_guard", lambda: None)
+    monkeypatch.setattr(launcher, "_spawn_guard", lambda *a: None)
     cfg = config.load()
     cfg.update(switch_delay=0, restore_delay=0)
     cfg["games"]["steam:1"] = {"name": "Test Game", "enabled": True, "width": 2560, "height": 1440}
@@ -82,6 +82,7 @@ def test_start_failure_notifies_with_game_name(isolated):
 
 def test_guard_restores_and_says_so(isolated, monkeypatch):
     shown, _ = isolated
+    monkeypatch.setattr(launcher, "GUARD_POLL", 0.05)
     desktop = display.Mode(3440, 1440, 165)
     calls = []
     monkeypatch.setattr(display, "set_mode", lambda mode, qres, temporary: calls.append(mode) or "stub")

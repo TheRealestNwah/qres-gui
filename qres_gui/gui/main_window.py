@@ -14,11 +14,11 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import __version__, config, display, hooks, notify, paths, session, shortcuts
+from .. import __version__, config, display, hooks, notify, paths, playnite, session, shortcuts
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
-from .dialogs import AddGameDialog, SettingsDialog
+from .dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
 
 ICON_SIZE = QSize(92, 43)
 ROLE_ID = Qt.ItemDataRole.UserRole
@@ -42,6 +42,7 @@ class MainWindow(QMainWindow):
         self.games: dict[str, Game] = {}
         self.items: dict[str, GameItem] = {}
         self.launch_opts: dict[str, str] = {}
+        self.playnite_state = "missing"
         self._icons: dict[str, QPixmap] = {}
         self._save_timer = QTimer(self, singleShot=True, interval=400, timeout=self._save_now)
 
@@ -213,11 +214,15 @@ class MainWindow(QMainWindow):
             for gid, e in self.cfg["games"].items() if e.get("store") == "manual"
         ]
         self.games = {g.id: g for g in detected + manual}
-        # Keep saved launch targets in step with what the stores report now.
+        # Keep saved profiles in step with what the stores report now; the
+        # launcher and Playnite matching work from these copies.
         for gid, entry in self.cfg["games"].items():
             game = self.games.get(gid)
             if game and game.store != "manual":
                 entry["launch"], entry["name"] = game.launch, game.name
+            if game:
+                entry["install_dir"] = game.install_dir
+        self.playnite_state = playnite.state(paths.launcher_command())
         self.save()
 
         stores_present = sorted({g.store for g in self.games.values()}, key=list(STORE_LABELS).index)
@@ -263,6 +268,7 @@ class MainWindow(QMainWindow):
             "width": target["width"], "height": target["height"], "refresh": target.get("refresh", 0),
             "watch": [Path(game.exe).name] if game.needs_watch and game.exe else [],
             "launch": game.launch,
+            "install_dir": game.install_dir,
         }
 
     def save(self) -> None:
@@ -363,6 +369,10 @@ class MainWindow(QMainWindow):
         color = {"ok": theme.OK, "warn": theme.WARN}.get(kind, theme.MUTED)
         item.setForeground(3, QBrush(QColor(color)))
 
+    @property
+    def playnite_hooked(self) -> bool:
+        return self.playnite_state == "installed"
+
     def hook_status(self, game: Game, entry: dict | None) -> tuple[str, str]:
         enabled = bool(entry and entry.get("enabled"))
         if game.store == "steam":
@@ -371,11 +381,19 @@ class MainWindow(QMainWindow):
                 return ("Steam launch options", "ok") if enabled else ("Launch options (switching off)", "off")
             if state == "outdated":
                 return "Launch options need updating", "warn"
+            if enabled and self.playnite_hooked:
+                return "Playnite only", "ok"
             return ("Launch options not set", "warn") if enabled else ("—", "off")
         found = shortcuts.existing(game.name)
         if found:
             where = " + ".join("Desktop" if p.parent == shortcuts.desktop_dir() else "Start menu" for p in found)
+            if self.playnite_hooked:
+                where += " + Playnite"
             return f"Shortcut: {where}", "ok" if enabled else "off"
+        if self.playnite_hooked:
+            return ("Playnite", "ok") if enabled else ("—", "off")
+        if not game.launch:  # only startable from Playnite
+            return ("Needs Playnite setup", "warn") if enabled else ("—", "off")
         return ("No shortcut yet", "warn") if enabled else ("—", "off")
 
     def refresh_rows(self, game_id: str | None = None) -> None:
@@ -474,6 +492,7 @@ class MainWindow(QMainWindow):
             "name": name, "store": "manual", "enabled": True,
             "width": target["width"], "height": target["height"], "refresh": target.get("refresh", 0),
             "watch": [], "launch": {"type": "exe", "path": exe, "args": args, "cwd": os.path.dirname(exe)},
+            "install_dir": os.path.dirname(exe),
         }
         self._save_now()
         self.rescan()
@@ -497,10 +516,17 @@ class MainWindow(QMainWindow):
                 "Steam is running. It has to be closed before its launch options can be changed.\n\nClose Steam now?")
             if answer != QMessageBox.StandardButton.Yes or not self._close_steam_and_wait():
                 return
+        if found.playnite and playnite.is_running():
+            QMessageBox.information(self, "Remove all hooks",
+                                    "Playnite is running. Close it first - it saves its settings when it exits.")
+            return
+        parts = [f"remove QRes from {len(found.steam)} Steam game(s)' launch options",
+                 f"delete {len(found.shortcut_files)} game shortcut(s)"]
+        if found.playnite:
+            parts.append("take QRes's lines out of Playnite's scripts")
         answer = QMessageBox.question(
             self, "Remove all hooks",
-            f"Remove QRes from {len(found.steam)} Steam game(s)' launch options and delete "
-            f"{len(found.shortcut_files)} game shortcut(s)?\n\n"
+            f"This will {', '.join(parts[:-1])} and {parts[-1]}.\n\n"
             "Switching gets turned off for every game; your resolution choices are kept.")
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -513,6 +539,7 @@ class MainWindow(QMainWindow):
             entry["enabled"] = False
         self._save_now()
         self._reload_launch_options()
+        self.playnite_state = playnite.state(paths.launcher_command())
         self.refresh_rows()
         self.statusBar().showMessage("Removed all hooks and turned switching off.", 10000)
 
@@ -534,11 +561,17 @@ class MainWindow(QMainWindow):
         return True
 
     def open_settings(self) -> None:
-        dialog = SettingsDialog(self, self.cfg, self.modes, on_remove_hooks=self.remove_all_hooks)
+        dialog = SettingsDialog(self, self.cfg, self.modes, on_remove_hooks=self.remove_all_hooks,
+                                on_playnite=self.open_playnite)
         if dialog.exec():
             dialog.apply_to(self.cfg)
             self._save_now()
             self._poll_state()
+
+    def open_playnite(self) -> None:
+        PlayniteDialog(self).exec()
+        self.playnite_state = playnite.state(paths.launcher_command())
+        self.refresh_rows()
 
     def restore_desktop(self) -> None:
         active = session.read()

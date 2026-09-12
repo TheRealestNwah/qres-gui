@@ -423,6 +423,9 @@ class DetailPanel(QScrollArea):
         else:
             self.steam_hint.setText("Steam is closed, so the change can be written directly. "
                                     "Your existing launch options are kept.")
+        if self.win.playnite_hooked:
+            self.steam_hint.setText(self.steam_hint.text() + " Started from Playnite, it switches through "
+                                    "Playnite's scripts either way; the launch options cover starting it from Steam.")
 
     def _refresh_shortcuts(self, entry: dict, enabled: bool, watch_needed: bool) -> None:
         launch = entry.get("launch") or self.game.launch or {}
@@ -431,11 +434,21 @@ class DetailPanel(QScrollArea):
         elif launch.get("type") == "uri":
             self.target_label.setText(f"Starts through {self.game.store_label}  ({launch['uri']})")
         else:
-            self.target_label.setText("No launch target.")
+            self.target_label.setText(f"QRes can't start {self.game.store_label} games itself; they need "
+                                      "the tool that installed them. Start it from Playnite instead.")
         self.target_label.setVisible(self.game.store != "manual")
 
         found = shortcuts.existing(self.game.name)
-        if watch_needed:
+        playnite_only = not launch
+        if playnite_only:
+            if self.win.playnite_hooked:
+                theme.set_state(self.shortcut_status, "ok" if enabled else "off",
+                                "✓  Switches when started from Playnite." if enabled else
+                                "Turn on switching above; it then switches when started from Playnite.")
+            else:
+                theme.set_state(self.shortcut_status, "warn",
+                                "Add QRes to Playnite first: Settings › Playnite integration.")
+        elif watch_needed:
             theme.set_state(self.shortcut_status, "warn", "Set the game process below before creating a shortcut.")
         elif found:
             where = " and ".join("on the Desktop" if p.parent == shortcuts.desktop_dir() else "in the Start menu"
@@ -450,10 +463,19 @@ class DetailPanel(QScrollArea):
         for button in (self.desktop_btn, self.startmenu_btn, self.play_btn):
             button.setEnabled(has_target and not watch_needed)
         self.remove_shortcuts_btn.setVisible(bool(found))
-        self.shortcut_hint.setText(
-            f"Start the game from this shortcut (or Play) instead of from {self.game.store_label} directly - "
-            "that's what switches the resolution." if self.game.store != "manual" else
-            "Start the game from this shortcut (or Play) so the resolution switches.")
+        for button in (self.desktop_btn, self.startmenu_btn, self.play_btn):
+            button.setVisible(not playnite_only)
+        if playnite_only:
+            hint = ""
+        elif self.game.store != "manual":
+            hint = (f"Start the game from this shortcut (or Play) instead of from {self.game.store_label} "
+                    "directly - that's what switches the resolution.")
+        else:
+            hint = "Start the game from this shortcut (or Play) so the resolution switches."
+        if self.win.playnite_hooked and not playnite_only:
+            hint += " Starting it from Playnite switches too."
+        self.shortcut_hint.setText(hint)
+        self.shortcut_hint.setVisible(bool(hint))
 
     # --- actions -----------------------------------------------------------
 

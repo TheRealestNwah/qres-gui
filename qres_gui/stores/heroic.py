@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from urllib.parse import quote
 
-from .base import Game, guess_main_exe, read_fuel, read_goggame_info, read_json_lenient
+from .base import Game, guess_main_exe, legendary_installs, nile_installs, read_goggame_info, read_json_lenient
 
 RUNNER_STORES = {"legendary": "Epic", "nile": "Amazon", "gog": "GOG"}
 
@@ -48,41 +48,13 @@ def _windows(platform) -> bool:
 
 
 def _legendary(root: Path) -> list[Game]:
-    data = read_json_lenient(root / "legendaryConfig" / "legendary" / "installed.json")
-    games = []
-    for app, info in (data.items() if isinstance(data, dict) else []):
-        if not isinstance(info, dict) or info.get("is_dlc") or not _windows(info.get("platform")):
-            continue
-        install = str(info.get("install_path") or "")
-        if not os.path.isdir(install):
-            continue
-        exe = os.path.normpath(os.path.join(install, info["executable"])) if info.get("executable") else ""
-        games.append(_via_heroic("legendary", app, str(info.get("title") or app), install, exe))
-    return games
+    return [_via_heroic("legendary", g["app"], g["title"], g["install"], g["exe"])
+            for g in legendary_installs(root / "legendaryConfig" / "legendary" / "installed.json")]
 
 
 def _nile(root: Path) -> list[Game]:
-    config = root / "nile_config" / "nile"
-    installed = read_json_lenient(config / "installed.json")
-    if not isinstance(installed, list):
-        return []
-    titles = {}
-    library = read_json_lenient(config / "library.json")
-    for item in (library if isinstance(library, list) else []):
-        product = item.get("product") if isinstance(item, dict) else None
-        if isinstance(product, dict) and product.get("id"):
-            titles[product["id"]] = str(product.get("title") or "")
-    games = []
-    for entry in installed:
-        if not isinstance(entry, dict):
-            continue
-        app, install = entry.get("id"), str(entry.get("path") or "")
-        if not app or not os.path.isdir(install):
-            continue
-        fuel = read_fuel(install)
-        name = titles.get(app) or os.path.basename(install)
-        games.append(_via_heroic("nile", app, name, install, fuel["path"] if fuel else guess_main_exe(install)))
-    return games
+    return [_via_heroic("nile", g["app"], g["title"], g["install"], g["exe"])
+            for g in nile_installs(root / "nile_config" / "nile")]
 
 
 def _gog(root: Path) -> list[Game]:

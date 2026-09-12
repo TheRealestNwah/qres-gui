@@ -3,8 +3,9 @@
 Uninstalls QRes GUI (install.ps1 copies this script into the install folder).
 
 .DESCRIPTION
-Takes QRes out of Steam launch options and deletes the game shortcuts first,
-so no game is left pointing at a launcher that no longer exists. Then removes
+Takes QRes out of Steam launch options and Playnite's scripts and deletes the
+game shortcuts first, so nothing is left pointing at a launcher that no longer
+exists. Then removes
 the Start menu folder, the Settings > Apps entry, the notification
 registration and the program folder.
 Settings in %APPDATA%\QResGUI are kept unless you say otherwise.
@@ -42,6 +43,19 @@ try {
         while ($true) {
             $proc = Start-Process $launcher -ArgumentList "remove-hooks", "`"$report`"" -Wait -PassThru
             if ($proc.ExitCode -eq 0) { break }
+            if ($proc.ExitCode -eq 4) {
+                # 4: Playnite is open, and it saves its settings (scripts included) when it exits.
+                if ($Quiet) {
+                    Write-Host "Playnite is running. Close it and uninstall again."
+                    Finish 1
+                }
+                $answer = Read-Host "Close Playnite so QRes can be taken out of its scripts, then press Enter (or type n to cancel)"
+                if ($answer -match "^n") {
+                    Write-Host "Uninstall cancelled. Nothing was removed."
+                    Finish 1
+                }
+                continue
+            }
             if ($proc.ExitCode -ne 3) {
                 throw "Removing hooks failed (exit code $($proc.ExitCode)). See $settings\launcher.log"
             }
@@ -66,6 +80,7 @@ try {
         $summary = Get-Content $report -Raw | ConvertFrom-Json
         Remove-Item $report -ErrorAction SilentlyContinue
         Write-Host "Removed QRes from $(@($summary.steam).Count) Steam game(s) and deleted $(@($summary.shortcuts).Count) game shortcut(s)."
+        if ($summary.playnite) { Write-Host "Removed QRes from Playnite's scripts." }
     }
 
     Remove-Item $menu -Recurse -Force -ErrorAction SilentlyContinue

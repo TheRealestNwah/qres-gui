@@ -2,16 +2,22 @@
 
     QResLauncher run <game-id> [game command...]
     QResLauncher restore
-    QResLauncher remove-hooks [report.json]   (used by the uninstaller)
-    QResLauncher guard <pid>                  (internal)
+    QResLauncher playnite-start <base64 json>  (Playnite's before-start script)
+    QResLauncher playnite-stop <base64 json>   (Playnite's after-exit script)
+    QResLauncher remove-hooks [report.json]    (used by the uninstaller)
+    QResLauncher guard <pid> [token]           (internal)
 
 `run` switches to the game's configured resolution, starts the game (the
 command Steam substitutes for %command%, or the launch target saved for the
 game), waits for the game's processes to exit and switches back.
+
+`playnite-start` / `playnite-stop` only switch: Playnite starts the game,
+tracks it, and runs the stop script when it exits.
 """
 
 from __future__ import annotations
 
+import base64
 import ctypes
 import json
 import logging
@@ -24,7 +30,7 @@ from logging.handlers import RotatingFileHandler
 
 import psutil
 
-from . import config, display, notify, paths, session
+from . import config, display, notify, paths, playnite, session
 
 log = logging.getLogger("qres.launcher")
 
@@ -36,7 +42,9 @@ SEE_MASK_NOCLOSEPROCESS = 0x00000040
 
 APPEAR_TIMEOUT = 180.0  # how long to wait for a watched process to show up
 EXIT_GRACE = 3.0        # a game gone for this long is closed (covers self-restarts)
-EXIT_STEAM_RUNNING = 3  # remove-hooks: Steam must be closed first
+EXIT_STEAM_RUNNING = 3     # remove-hooks: Steam must be closed first
+EXIT_PLAYNITE_RUNNING = 4  # remove-hooks: Playnite must be closed first
+GUARD_POLL = 2.0           # seconds between guard checks
 
 
 class LaunchError(RuntimeError):
@@ -52,10 +60,14 @@ def main(argv: list[str] | None = None) -> int:
             return run(argv[1], argv[2:])
         if argv == ["restore"]:
             return restore()
+        if len(argv) == 2 and argv[0] == "playnite-start":
+            return playnite_start(argv[1])
+        if len(argv) == 2 and argv[0] == "playnite-stop":
+            return playnite_stop(argv[1])
         if argv[:1] == ["remove-hooks"] and len(argv) <= 2:
             return remove_hooks(argv[1] if len(argv) == 2 else None)
-        if len(argv) == 2 and argv[0] == "guard":
-            return guard(int(argv[1]))
+        if argv[:1] == ["guard"] and len(argv) in (2, 3):
+            return guard(int(argv[1]), argv[2] if len(argv) == 3 else None)
     except Exception as exc:
         log.exception("launcher failed")
         if argv[:1] == ["run"]:
@@ -104,20 +116,31 @@ def run(game_id: str, command: list[str]) -> int:
 
 
 class _Switch:
-    def __init__(self, cfg: dict, entry: dict, game_id: str):
+    """One resolution switch. The owner (this launcher, or Playnite) keeps it alive."""
+
+    def __init__(self, cfg: dict, entry: dict, game_id: str, owner: int | None = None, **extra):
         self.cfg = cfg
         self.entry = entry
         self.game_id = game_id
+        self.owner = owner or os.getpid()
+        self.extra = extra  # stored in the session record, e.g. source="playnite"
         self.name = entry.get("name") or game_id
         self.qres = display.find_qres(cfg.get("qres_path"))
         self.temporary = bool(cfg.get("temporary", True))
         self.original: display.Mode | None = None
+        self.token: str | None = None
 
     def apply(self) -> None:
         active = session.read()
         if active and session.owner_alive(active):
-            log.info("another launch (pid %s) already switched the display; leaving it alone", active["pid"])
-            return
+            # Playnite runs its stop script per game; if one never came, the next
+            # game from the same Playnite takes the switch over.
+            takeover = (active.get("source") == "playnite" and self.extra.get("source") == "playnite"
+                        and active.get("pid") == self.owner)
+            if not takeover:
+                log.info("another launch (pid %s) already switched the display; leaving it alone", active["pid"])
+                return
+            log.info("taking over Playnite's earlier switch for %s", active.get("game_id"))
         # A stale record means an earlier launch never switched back, so its
         # "original" is the real desktop mode, not whatever is set right now.
         original = display.Mode.from_dict(active["original"]) if active else display.current_mode()
@@ -128,12 +151,14 @@ class _Switch:
         if target == original:
             log.info("target %s is the desktop mode; nothing to do", target)
             if active:
+                if display.current_mode() != original:  # a taken-over switch still needs undoing
+                    display.set_mode(original, self.qres, self.temporary)
                 session.clear()
             return
 
-        session.write(original.to_dict(), self.game_id)
+        self.token = session.write(original.to_dict(), self.game_id, owner=self.owner, **self.extra)
         self.original = original
-        _spawn_guard()
+        _spawn_guard(self.owner, self.token)
         try:
             how = display.set_mode(target, self.qres, self.temporary)
             log.info("switched %s -> %s (%s)", original, target, how)
@@ -155,7 +180,7 @@ class _Switch:
             notify.notify(f"Couldn't switch back to {self.original}",
                           f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=self.game_id)
             return  # keep the session record so the GUI can offer to restore
-        session.clear(os.getpid())
+        session.clear(token=self.token)
 
 
 # --- starting the game -----------------------------------------------------
@@ -346,9 +371,9 @@ def _wait(started: subprocess.Popen | int | None, watch: set[str], grace: float 
 
 # --- safety net ------------------------------------------------------------
 
-def _spawn_guard() -> None:
-    """Start a detached process that restores the resolution if we get killed."""
-    cmd = paths.launcher_command() + ["guard", str(os.getpid())]
+def _spawn_guard(owner: int, token: str) -> None:
+    """Start a detached process that restores the resolution if the owner goes away first."""
+    cmd = paths.launcher_command() + ["guard", str(owner), token]
     base = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     for flags in (base | CREATE_BREAKAWAY_FROM_JOB, base):
         try:
@@ -360,28 +385,38 @@ def _spawn_guard() -> None:
     log.warning("couldn't start the guard process: %s", error)
 
 
-def guard(pid: int) -> int:
-    try:
-        psutil.Process(pid).wait()
-    except psutil.NoSuchProcess:
-        pass
+def _still_ours(pid: int, token: str | None) -> dict | None:
     data = session.read()
-    if not data or data.get("pid") != pid:
-        return 0
-    log.warning("launcher %d ended without switching back; restoring", pid)
+    if not data or data.get("pid") != pid or (token and data.get("token") != token):
+        return None
+    return data
+
+
+def guard(pid: int, token: str | None = None) -> int:
+    """Wait while the owner lives and the switch is still its; restore if the owner dies first.
+
+    Polls rather than waiting on the process, because a Playnite owner outlives
+    many switches and the guard must leave once its own switch is undone.
+    """
+    while (data := _still_ours(pid, token)) and session.owner_alive(data):
+        time.sleep(GUARD_POLL)
+    if not data:
+        return 0  # switched back normally, or a newer switch took over
     game_id = data.get("game_id") or ""
+    name = _game_name(game_id)
+    cause = (f"Playnite closed while {name} was running" if data.get("source") == "playnite"
+             else f"The launcher for {name} closed unexpectedly (for example through Steam's Stop button)")
+    log.warning("owner %d ended without switching back; restoring", pid)
     mode = display.Mode.from_dict(data["original"])
     try:
         code = restore()
     except display.DisplayError as exc:
         notify.notify(f"Couldn't switch back to {mode}",
-                      f"The launcher for {_game_name(game_id)} closed unexpectedly. "
-                      f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=game_id)
+                      f"{cause}. Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=game_id)
         return 1
     if code == 0:
-        notify.notify("Resolution restored",
-                      f"The launcher for {_game_name(game_id)} closed unexpectedly (for example through "
-                      f"Steam's Stop button), so QRes switched back to {mode}.", level="info", game_id=game_id)
+        notify.notify("Resolution restored", f"{cause}, so QRes switched back to {mode}.",
+                      level="info", game_id=game_id)
     return code
 
 
@@ -399,17 +434,68 @@ def restore() -> int:
     return 0
 
 
-def remove_hooks(report: str | None) -> int:
-    """Strip our Steam launch options and delete game shortcuts (for the uninstaller).
+def _decode(payload: str) -> dict:
+    data = json.loads(base64.b64decode(payload).decode("utf-8"))
+    if not isinstance(data, dict):
+        raise LaunchError("Playnite passed an unexpected payload.")
+    return data
 
-    Exits with EXIT_STEAM_RUNNING, touching nothing, if Steam needs changing but is open.
+
+def playnite_start(payload: str) -> int:
+    """Before-start script: switch for the Playnite game's QRes profile, if it has one."""
+    info = _decode(payload)
+    cfg = config.load()
+    game_id, entry = playnite.match(cfg, info)
+    if not game_id:
+        log.info("no QRes profile for Playnite game %r (%s)", info.get("name"), info.get("installDir"))
+        return 0
+    if not entry.get("enabled"):
+        log.info("switching is off for %s", game_id)
+        return 0
+    owner = playnite.owner_pid(int(info.get("owner") or 0))
+    if owner is None:
+        log.warning("no running Playnite to tie the switch to; not switching")
+        return 0
+    log.info("Playnite is starting %s (%s)", info.get("name"), game_id)
+    _Switch(cfg, entry, game_id, owner=owner, source="playnite", playnite_id=str(info.get("id"))).apply()
+    return 0
+
+
+def playnite_stop(payload: str) -> int:
+    """After-exit script: switch back if Playnite's switch for this game is still in place."""
+    info = _decode(payload)
+    data = session.read()
+    if not data or data.get("source") != "playnite" or data.get("playnite_id") != str(info.get("id")):
+        log.info("nothing of Playnite's to switch back for %s", info.get("id"))
+        return 0
+    cfg = config.load()
+    entry = cfg.get("games", {}).get(data.get("game_id"), {})
+    if not entry.get("quick_restore"):
+        time.sleep(float(cfg.get("restore_delay", 1.0)))
+    mode = display.Mode.from_dict(data["original"])
+    try:
+        how = display.set_mode(mode, display.find_qres(cfg.get("qres_path")), bool(cfg.get("temporary", True)))
+    except display.DisplayError as exc:
+        notify.notify(f"Couldn't switch back to {mode}",
+                      f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=data.get("game_id"))
+        return 1
+    log.info("restored %s after Playnite stopped %s (%s)", mode, data.get("game_id"), how)
+    session.clear(token=data.get("token"))
+    return 0
+
+
+def remove_hooks(report: str | None) -> int:
+    """Strip our Steam launch options and Playnite scripts, and delete game shortcuts
+    (for the uninstaller). Touches nothing, and exits with EXIT_STEAM_RUNNING or
+    EXIT_PLAYNITE_RUNNING, if Steam or Playnite needs changing but is open.
     """
     from . import hooks
     from .stores.steam import SteamClient, SteamRunningError
 
     client = SteamClient()
     found = hooks.find(client)
-    summary = {"steam": sorted(found.steam), "shortcuts": [str(p) for p in found.shortcut_files], "status": "ok"}
+    summary = {"steam": sorted(found.steam), "shortcuts": [str(p) for p in found.shortcut_files],
+               "playnite": found.playnite, "status": "ok"}
     code = 0
     try:
         hooks.remove(client, found)
@@ -417,6 +503,9 @@ def remove_hooks(report: str | None) -> int:
     except SteamRunningError:
         summary["status"], code = "steam-running", EXIT_STEAM_RUNNING
         log.info("can't remove Steam hooks while Steam is running")
+    except playnite.PlayniteRunningError:
+        summary["status"], code = "playnite-running", EXIT_PLAYNITE_RUNNING
+        log.info("can't remove Playnite scripts while Playnite is running")
     if report:
         with open(report, "w", encoding="utf-8") as fh:
             json.dump(summary, fh)

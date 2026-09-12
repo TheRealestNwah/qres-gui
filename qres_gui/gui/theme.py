@@ -19,6 +19,8 @@ STORE_COLORS = {
     "ubisoft": "#35c0ae",
     "heroic": "#e0736a",
     "amazon": "#d9a14a",
+    "legendary": "#c9cdd3",
+    "nile": "#d9a14a",
     "manual": "#8b93a1",
 }
 

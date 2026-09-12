@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from qres_gui import hooks, launcher, notify, shortcuts, vdf
+from qres_gui import hooks, launcher, notify, playnite, shortcuts, vdf
 from qres_gui.stores import steam
 from qres_gui.stores.steam import SteamClient, SteamRunningError
 
@@ -39,6 +39,7 @@ def fake_env(tmp_path, monkeypatch):
     monkeypatch.setattr(shortcuts, "desktop_dir", lambda: desktop)
     monkeypatch.setattr(shortcuts, "start_menu_dir", lambda: menu)
     monkeypatch.setattr(SteamClient, "is_running", staticmethod(lambda: False))
+    monkeypatch.setattr(playnite, "config_path", lambda: None)  # keep the real Playnite out of it
     return SteamClient(root), desktop, menu
 
 
