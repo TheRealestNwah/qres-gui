@@ -23,6 +23,9 @@ def _browse_row(edit: QLineEdit, button: QPushButton) -> QWidget:
     return row
 
 
+TROUBLESHOOTING = "https://github.com/TheRealestNwah/qres-gui/blob/main/docs/TROUBLESHOOTING.md"
+
+
 def _left(widget: QWidget) -> QHBoxLayout:
     """A form cell holding `widget` at its natural size, on the left."""
     row = QHBoxLayout()
@@ -46,7 +49,7 @@ def _hint(text: str) -> QLabel:
 
 class SettingsDialog(QDialog):
     def __init__(self, parent, cfg: dict, modes: list[display.Mode], on_remove_hooks=None, on_playnite=None,
-                 on_check_updates=None):
+                 on_check_updates=None, on_guide=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(700)
@@ -120,6 +123,14 @@ class SettingsDialog(QDialog):
         form.addRow("Updates", row)
         form.addRow("", _hint("Asks GitHub for this project's release list; nothing about your PC or games is "
                               "sent. New versions are never downloaded or installed for you."))
+
+        row = QHBoxLayout()
+        if on_guide:
+            # Close Settings first, so its (now stale) fields can't overwrite the guide's choices.
+            row.addWidget(QPushButton("Getting started…", clicked=lambda: (self.reject(), on_guide())))
+        row.addWidget(QPushButton("Troubleshooting", clicked=lambda: QDesktopServices.openUrl(QUrl(TROUBLESHOOTING))))
+        row.addStretch()
+        form.addRow("Help", row)
 
         row = QHBoxLayout()
         row.addWidget(QLabel(f"QRes GUI {__version__} · MIT license"))

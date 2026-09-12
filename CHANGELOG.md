@@ -3,6 +3,16 @@
 All notable changes to QRes GUI. Versions are marked as pre-releases on
 GitHub until 1.0.
 
+## 0.9.0 — 2026-09-12
+
+### Added
+- **Getting started guide** for new installs: what QRes GUI does, finding
+  QRes.exe, your desktop resolution and what games switch to, how you start
+  games (Steam, Playnite with a one-click **Add QRes to Playnite**, shortcuts
+  for everything else), and picking a first game. Existing setups skip it;
+  **Settings › Getting started…** reopens it any time.
+- **Settings › Help** with the guide and the troubleshooting page.
+
 ## 0.8.0 — 2026-09-12
 
 ### Added

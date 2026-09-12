@@ -58,6 +58,8 @@ QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus {{ border-color: {ACCENT}
 QLineEdit[readOnly="true"] {{ color: #b9bec6; background: #1a1c20; }}
 QTreeWidget {{ border: 1px solid #2e3238; border-radius: 8px; padding: 2px; }}
 QTreeWidget::item {{ padding: 3px 2px; }}
+QListWidget {{ border: 1px solid #2e3238; border-radius: 8px; padding: 4px; }}
+QListWidget::item {{ padding: 5px 6px; border-radius: 4px; }}
 QHeaderView::section {{
     background: #1d1f23; color: #aeb4bd; border: none; border-bottom: 1px solid #2e3238; padding: 6px;
 }}

@@ -103,6 +103,15 @@ for name, dialog in (("playnite", PlayniteDialog(win)), ("settings", SettingsDia
     app.processEvents()
     dialog.grab().save(str(OUT / f"{name}.png"))
     dialog.close()
+
+from qres_gui.gui.guide import GettingStarted  # noqa: E402
+guide = GettingStarted(win)
+guide.show()
+for page in range(guide.pages.count()):
+    guide._go(page - guide.pages.currentIndex())
+    app.processEvents()
+    guide.grab().save(str(OUT / f"guide-{page + 1}.png"))
+guide.close()
 print("wrote", ", ".join(sorted(p.name for p in OUT.glob("*.png"))))
 
 

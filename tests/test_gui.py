@@ -87,6 +87,9 @@ def env(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(main_window, "detect_all", lambda client: (list(games), []))
     fake_steam = FakeSteam()
     monkeypatch.setattr(main_window, "SteamClient", lambda: fake_steam)
+    cfg = config.load()
+    cfg["first_run_done"] = True  # the guide has its own tests; keep it out of the others
+    config.save(cfg)
     return {"steam": fake_steam, "desktop": desktop, "tmp": tmp_path}
 
 
@@ -285,6 +288,88 @@ def test_automatic_check_respects_the_setting_and_the_daily_limit(win, monkeypat
     win.cfg["update_last_check"] = 0
     win._auto_check_updates()
     assert calls == [False]
+
+
+# --- Getting started guide -------------------------------------------------------------
+
+def test_guide_is_for_new_installs_only(win):
+    win.cfg["first_run_done"] = False
+    assert win._needs_guide()
+    win.cfg["games"]["steam:10"] = {"enabled": True, "width": 2560, "height": 1440}
+    assert not win._needs_guide() and config.load()["first_run_done"] is True  # already set up
+
+
+def test_guide_pages(win, env):
+    from qres_gui.gui.guide import GettingStarted
+    guide = GettingStarted(win)
+    assert guide.step.text().startswith("Step 1 of 5") and not guide.back_btn.isEnabled()
+    guide.next_btn.click()
+    assert "QRes" in guide.step.text()
+    assert "Found QRes" not in guide.qres_status.text()  # the fake path doesn't exist
+    real = env["tmp"] / "QRes.exe"
+    real.write_bytes(b"MZ")
+    guide.qres_path.setText(str(real))
+    assert "Found QRes" in guide.qres_status.text()
+    for _ in range(3):
+        guide.next_btn.click()
+    assert guide.next_btn.text() == "Finish" and guide.step.text().startswith("Step 5 of 5")
+    guide.search.setText("stardew")
+    visible = [guide.game_list.item(i).text() for i in range(guide.game_list.count())
+               if not guide.game_list.item(i).isHidden()]
+    assert visible == ["Stardew Valley    ·    GOG"]
+
+
+def test_finishing_the_guide_sets_up_the_chosen_game(win, env, monkeypatch):
+    from qres_gui.gui.guide import GettingStarted
+
+    def run(guide):
+        guide.target.setCurrentIndex(guide.target.findData("1920x1080"))
+        for i in range(guide.game_list.count()):
+            if "Stardew" in guide.game_list.item(i).text():
+                guide.game_list.setCurrentRow(i)
+        return 1
+
+    monkeypatch.setattr(GettingStarted, "exec", run)
+    win.cfg["first_run_done"] = False
+    win.open_guide()
+    saved = config.load()
+    assert saved["first_run_done"] and saved["default_target"] == {"width": 1920, "height": 1080, "refresh": 0}
+    entry = saved["games"]["gog:1453375253"]
+    assert entry["enabled"] and (entry["width"], entry["height"]) == (1920, 1080)
+    assert win.detail.game.id == "gog:1453375253"  # opened, ready for the shortcut step
+
+
+def test_skipping_the_guide_changes_nothing_but_the_flag(win, monkeypatch):
+    from qres_gui.gui.guide import GettingStarted
+    monkeypatch.setattr(GettingStarted, "exec", lambda self: 0)
+    before = config.load()
+    win.cfg["first_run_done"] = False
+    win.open_guide()
+    after = config.load()
+    assert after["first_run_done"] and after["default_target"] == before["default_target"]
+    assert not any(e.get("enabled") for e in after["games"].values())
+
+
+def test_guide_adds_qres_to_playnite(win, env, monkeypatch):
+    from qres_gui.gui.guide import GettingStarted
+    cfg_path = env["tmp"] / "Playnite" / "config.json"
+    cfg_path.parent.mkdir()
+    cfg_path.write_text(json.dumps({"PreScript": "", "PostScript": ""}), encoding="utf-8")
+    monkeypatch.setattr(playnite, "config_path", lambda: cfg_path)
+    guide = GettingStarted(win)
+    guide._go(3)
+    assert not guide.playnite_btn.isHidden()
+    guide.playnite_btn.click()
+    assert playnite.state(paths.launcher_command()) == "installed"
+    assert guide.playnite_btn.isHidden() and "already in Playnite" in guide.playnite_status.text()
+
+
+def test_settings_opens_the_guide(win):
+    opened = []
+    dialog = SettingsDialog(win, win.cfg, win.modes, on_guide=lambda: opened.append(True))
+    [button] = [b for b in dialog.findChildren(main_window.QPushButton) if b.text() == "Getting started…"]
+    button.click()
+    assert opened == [True] and dialog.result() == 0  # Settings closed without applying
 
 
 def test_settings_dialog_applies(win):

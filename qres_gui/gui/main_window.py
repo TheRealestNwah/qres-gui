@@ -20,6 +20,7 @@ from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
 from .dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
+from .guide import GettingStarted
 
 ICON_SIZE = QSize(92, 43)
 ROLE_ID = Qt.ItemDataRole.UserRole
@@ -54,7 +55,10 @@ class MainWindow(QMainWindow):
         self._poll = QTimer(self, interval=2500, timeout=self._poll_state)
         self._poll.start()
         QTimer.singleShot(300, self._check_leftover_session)
-        QTimer.singleShot(500, self._ensure_qres)
+        if self._needs_guide():
+            QTimer.singleShot(300, self.open_guide)  # the guide covers finding QRes
+        else:
+            QTimer.singleShot(500, self._ensure_qres)
         self._update_found.connect(self._on_update_result)
         self._show_update_bar()                  # from an earlier check
         QTimer.singleShot(1500, self._auto_check_updates)
@@ -649,11 +653,42 @@ class MainWindow(QMainWindow):
     def open_settings(self) -> None:
         dialog = SettingsDialog(self, self.cfg, self.modes, on_remove_hooks=self.remove_all_hooks,
                                 on_playnite=self.open_playnite,
-                                on_check_updates=lambda: self.check_for_updates(wait=True))
+                                on_check_updates=lambda: self.check_for_updates(wait=True),
+                                on_guide=self.open_guide)
         if dialog.exec():
             dialog.apply_to(self.cfg)
             self._save_now()
             self._poll_state()
+
+    def _needs_guide(self) -> bool:
+        """A new install gets the guide once; anyone with games already set up is past it."""
+        if self.cfg.get("first_run_done"):
+            return False
+        if any(entry.get("enabled") for entry in self.cfg["games"].values()):
+            self.cfg["first_run_done"] = True
+            self._save_now()
+            return False
+        return True
+
+    def open_guide(self) -> None:
+        guide = GettingStarted(self)
+        accepted = guide.exec()
+        self.cfg["first_run_done"] = True
+        if accepted:
+            game_id = guide.apply()
+            if game_id in self.games:
+                entry = self.entry_for(self.games[game_id], create=True)
+                target = self.cfg["default_target"]
+                entry.update(enabled=True, width=target["width"], height=target["height"],
+                             refresh=target.get("refresh", 0))
+            self.playnite_state = playnite.state(paths.launcher_command())
+            self._save_now()
+            self.refresh_rows()
+            if game_id in self.items:
+                self.tree.setCurrentItem(self.items[game_id])
+            self._poll_state()
+        else:
+            self._save_now()
 
     def open_playnite(self) -> None:
         PlayniteDialog(self).exec()

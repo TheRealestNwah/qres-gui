@@ -10,7 +10,7 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
-> **Status: early pre-release (0.8.0).** Versions go 0.1.0, 0.2.0, … and
+> **Status: early pre-release (0.9.0).** Versions go 0.1.0, 0.2.0, … and
 > are marked as pre-releases on GitHub until the first stable release.
 > Verified on real hardware:
 > launching a Steam game through its launch options (MGS4, including its
@@ -32,6 +32,8 @@ the Windows display API directly.
 
 <details>
 <summary>More screenshots</summary>
+
+![The Getting started guide](docs/screenshots/guide-1.png)
 
 ![Settings](docs/screenshots/settings.png)
 
@@ -134,8 +136,9 @@ now**, under **Settings › Updates**.
    **QRes GUI** to the Start menu and to *Settings › Apps*. Installing a newer
    version the same way updates it in place. The folder never moves, so
    existing hooks keep working.
-2. Open **QRes GUI**. If QRes.exe isn't on your PATH or in the install folder,
-   it asks you where it is. Select a game, tick **Switch resolution when this game
+2. Open **QRes GUI**. The first time, a short **Getting started** guide finds
+   QRes.exe, confirms your resolutions, adds QRes to Playnite if you use it, and
+   sets up a first game. Later: select a game, tick **Switch resolution when this game
    launches** and pick the resolution. **Test for 10 seconds** tries the mode
    and switches back on its own. **Switch back the moment the game closes**
    skips the few seconds normally allowed for games that restart themselves.
