@@ -7,6 +7,7 @@ import xml.dom.minidom
 import psutil
 import pytest
 
+from helpers import no_guard
 from qres_gui import config, display, launcher, notify, session
 
 
@@ -59,7 +60,7 @@ def test_switch_failure_notifies_and_still_launches(isolated, monkeypatch):
         return "stub"
 
     monkeypatch.setattr(display, "set_mode", failing_set_mode)
-    monkeypatch.setattr(launcher, "_spawn_guard", lambda *a: None)
+    monkeypatch.setattr(launcher, "_spawn_guard", no_guard)
     cfg = config.load()
     cfg.update(switch_delay=0, restore_delay=0)
     cfg["games"]["steam:1"] = {"name": "Test Game", "enabled": True, "width": 2560, "height": 1440}

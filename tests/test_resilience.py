@@ -88,6 +88,48 @@ def test_normal_exit_leaves_the_rest_running(tmp_path):
             psutil.Process(game_pid).kill()
 
 
+def test_guard_survives_a_steam_style_job_being_ended(tmp_path):
+    """Steam's Stop ends a job that doesn't allow breaking away; the guard must not be in it."""
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateJobObjectW.restype = wintypes.HANDLE
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    k32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    ntdll = ctypes.WinDLL("ntdll")
+
+    guard_pid_file = tmp_path / "guard.pid"
+    stand_in_guard = tmp_path / "guard_stand_in.py"  # plays the launcher's "guard" command
+    stand_in_guard.write_text(
+        f"import os, time; open('{guard_pid_file.as_posix()}', 'w').write(str(os.getpid())); time.sleep(60)")
+    starter = tmp_path / "starter.py"
+    starter.write_text(textwrap.dedent(f"""
+        import os, sys, time
+        sys.path.insert(0, {ROOT!r})
+        from qres_gui import launcher, paths
+        paths.launcher_command = lambda: [sys.executable, {str(stand_in_guard)!r}]
+        launcher._spawn_guard(os.getpid(), "token").join(60)
+        time.sleep(60)
+    """))
+    job = k32.CreateJobObjectW(None, None)  # default limits: no breaking away
+    path = os.pathsep.join(p for p in sys.path if p and os.path.isdir(p))
+    proc = subprocess.Popen([sys._base_executable, str(starter)], env={**os.environ, "PYTHONPATH": path},
+                            creationflags=0x4)  # suspended until it's in the job
+    handle = k32.OpenProcess(0x1F0FFF, False, proc.pid)
+    assert k32.AssignProcessToJobObject(job, handle)
+    ntdll.NtResumeProcess(wintypes.HANDLE(handle))
+    guard_pid = int(_wait_for_file(guard_pid_file, timeout=60))
+    try:
+        k32.TerminateJobObject(job, 1)  # Steam's Stop
+        assert _gone(proc.pid, 5)
+        time.sleep(0.5)
+        assert psutil.pid_exists(guard_pid), "the guard was ended along with the job"
+    finally:
+        if psutil.pid_exists(guard_pid):
+            psutil.Process(guard_pid).kill()
+
+
 def test_guard_waits_for_a_game_that_outlives_its_owner(tmp_path, monkeypatch):
     """Playnite restarting mid-game: switch back when the game exits, not straight away."""
     monkeypatch.setattr(launcher, "GUARD_POLL", 0.1)

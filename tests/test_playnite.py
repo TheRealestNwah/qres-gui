@@ -8,6 +8,7 @@ import sys
 import psutil
 import pytest
 
+from helpers import no_guard
 from qres_gui import config, display, hooks, launcher, notify, playnite, session
 from qres_gui.stores import standalone
 from qres_gui.stores.steam import SteamClient
@@ -159,7 +160,7 @@ def switching(monkeypatch):
     monkeypatch.setattr(display, "current_mode", lambda: state["mode"])
     monkeypatch.setattr(display, "resolve", lambda w, h, r, d: display.Mode(w, h, d.refresh))
     monkeypatch.setattr(display, "set_mode", set_mode)
-    monkeypatch.setattr(launcher, "_spawn_guard", lambda *a: None)
+    monkeypatch.setattr(launcher, "_spawn_guard", no_guard)
     fake = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     monkeypatch.setattr(playnite, "owner_pid", lambda pid: fake.pid)
     cfg = config.load()

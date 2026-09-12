@@ -24,6 +24,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from ctypes import wintypes
 from logging.handlers import RotatingFileHandler
@@ -37,6 +38,7 @@ log = logging.getLogger("qres.launcher")
 DETACHED_PROCESS = 0x00000008
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+CREATE_NO_WINDOW = 0x08000000
 ERROR_ELEVATION_REQUIRED = 740
 SEE_MASK_NOCLOSEPROCESS = 0x00000040
 
@@ -53,6 +55,9 @@ class LaunchError(RuntimeError):
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["guard"] and len(argv) == 4 and argv[3]:
+        # Started through WMI, the guard gets a fresh environment; use the launcher's settings folder.
+        os.environ["APPDATA"] = argv[3]
     _setup_logging()
     log.info("started with %r", argv)
     try:
@@ -66,8 +71,8 @@ def main(argv: list[str] | None = None) -> int:
             return playnite_stop(argv[1])
         if argv[:1] == ["remove-hooks"] and len(argv) <= 2:
             return remove_hooks(argv[1] if len(argv) == 2 else None)
-        if argv[:1] == ["guard"] and len(argv) in (2, 3):
-            return guard(int(argv[1]), argv[2] if len(argv) == 3 else None)
+        if argv[:1] == ["guard"] and 2 <= len(argv) <= 4:
+            return guard(int(argv[1]), argv[2] if len(argv) >= 3 else None)
     except Exception as exc:
         log.exception("launcher failed")
         if argv[:1] == ["run"]:
@@ -164,15 +169,16 @@ class _Switch:
 
         self.token = session.write(original.to_dict(), self.game_id, owner=self.owner, **self.extra)
         self.original = original
-        _spawn_guard(self.owner, self.token)
+        guard_starting = _spawn_guard(self.owner, self.token)  # in the background, while we switch
         try:
             how = display.set_mode(target, self.qres, self.temporary)
             log.info("switched %s -> %s (%s)", original, target, how)
+            time.sleep(float(self.cfg.get("switch_delay", 1.0)))
         except display.DisplayError as exc:
             notify.notify(f"Couldn't switch to {target}",
                           f"{self.name} is starting at your current resolution. ({exc})", game_id=self.game_id)
-            return
-        time.sleep(float(self.cfg.get("switch_delay", 1.0)))
+        finally:
+            guard_starting.join(30)
 
     def restore(self) -> None:
         if self.original is None:
@@ -444,18 +450,57 @@ def _wait(started: subprocess.Popen | int | None, watch: set[str], grace: float 
 
 # --- safety net ------------------------------------------------------------
 
-def _spawn_guard(owner: int, token: str) -> None:
-    """Start a detached process that restores the resolution if the owner goes away first."""
-    cmd = paths.launcher_command() + ["guard", str(owner), token]
+def _spawn_guard(owner: int, token: str) -> threading.Thread:
+    """Start the guard, which restores the resolution if the owner goes away first.
+
+    It has to outlive whatever ends the owner. Steam runs games in a job that
+    doesn't allow processes to break away, and its Stop button ends the whole
+    job, so a guard started from inside it would die with the game. When
+    breaking away is refused, the guard is started through WMI instead, which
+    creates it outside the job (in the same session, with the same desktop).
+    Runs on a thread because the WMI route takes a second or so.
+    """
+    cmd = paths.launcher_command() + ["guard", str(owner), token, os.environ.get("APPDATA", "")]
+    quiet = {"close_fds": True, "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+             "stderr": subprocess.DEVNULL}
     base = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-    for flags in (base | CREATE_BREAKAWAY_FROM_JOB, base):
+
+    def start() -> None:
         try:
-            subprocess.Popen(cmd, creationflags=flags, close_fds=True,
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(cmd, creationflags=base | CREATE_BREAKAWAY_FROM_JOB, **quiet)
+            log.info("guard started")
             return
         except OSError as exc:
-            error = exc
-    log.warning("couldn't start the guard process: %s", error)
+            log.info("can't leave the job we were started in (%s); starting the guard through WMI", exc)
+        if _start_outside_jobs(cmd):
+            log.info("guard started through WMI")
+            return
+        try:
+            subprocess.Popen(cmd, creationflags=base, **quiet)
+            log.warning("guard started inside our job; it may be closed along with the game")
+        except OSError as exc:
+            log.warning("couldn't start the guard process: %s", exc)
+
+    thread = threading.Thread(target=start, name="guard-start", daemon=True)
+    thread.start()
+    return thread
+
+
+def _start_outside_jobs(cmd: list[str]) -> bool:
+    """Create a process through WMI (Win32_Process.Create), so no job of ours contains it."""
+    line = subprocess.list2cmdline(cmd).replace("'", "''")
+    script = ("$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create "
+              f"-Arguments @{{ CommandLine = '{line}' }}; exit [int]($r.ReturnValue -ne 0)")
+    try:
+        result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                                capture_output=True, text=True, timeout=30, creationflags=CREATE_NO_WINDOW)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("WMI process creation failed: %s", exc)
+        return False
+    if result.returncode != 0:
+        log.warning("WMI process creation failed: %s", (result.stderr or result.stdout).strip()[:300])
+        return False
+    return True
 
 
 def _still_ours(pid: int, token: str | None) -> dict | None:
