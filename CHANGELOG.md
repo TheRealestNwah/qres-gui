@@ -3,6 +3,21 @@
 All notable changes to QRes GUI. Versions are marked as pre-releases on
 GitHub until 1.0.
 
+## 0.7.0 — 2026-09-12
+
+### Added
+- [Troubleshooting guide](docs/TROUBLESHOOTING.md): stuck resolutions,
+  what the notifications mean, games that switch back too early or late,
+  Steam, Playnite, notifications, SmartScreen / antivirus.
+- Screenshots in the README.
+- Automated builds: GitHub Actions runs the tests and builds the zip on every
+  push, and publishes releases from version tags. Dependencies are pinned
+  (`requirements.txt`, `requirements-dev.txt`).
+
+### Fixed
+- Settings: the hints under "Desktop resolution", "Notifications",
+  "Playnite" and "Hooks" were cut off.
+
 ## 0.6.0 — 2026-09-12
 
 ### Added

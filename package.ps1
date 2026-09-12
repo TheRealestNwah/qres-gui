@@ -1,12 +1,12 @@
 # Builds the release zip: release\QResGUI-<version>-win64.zip, containing the
 # app plus install.cmd / install.ps1 / uninstall.ps1 so it can be installed
-# without Python.
-param([switch]$SkipBuild)
+# without Python. -Python is passed on to build.ps1.
+param([switch]$SkipBuild, [string]$Python)
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 
 if (-not $SkipBuild) {
-    & (Join-Path $root "build.ps1")
+    & (Join-Path $root "build.ps1") -Python $Python
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
 }
 $version = (Select-String -Path (Join-Path $root "qres_gui\__init__.py") -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value

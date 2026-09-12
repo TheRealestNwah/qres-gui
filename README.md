@@ -10,7 +10,7 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
-> **Status: early pre-release (0.6.0).** Versions go 0.1.0, 0.2.0, … and
+> **Status: early pre-release (0.7.0).** Versions go 0.1.0, 0.2.0, … and
 > are marked as pre-releases on GitHub until the first stable release.
 > Verified on real hardware:
 > launching a Steam game through its launch options (MGS4, including its
@@ -24,6 +24,20 @@ the Windows display API directly.
 >
 > Windows 10/11 only. The executables aren't code-signed, so SmartScreen may
 > warn the first time you run them.
+
+**[Download the latest release](https://github.com/TheRealestNwah/qres-gui/releases)** ·
+**[Troubleshooting](docs/TROUBLESHOOTING.md)** · **[Changelog](CHANGELOG.md)**
+
+![QRes GUI with a game selected: its resolution, refresh rate and Steam launch options](docs/screenshots/main.png)
+
+<details>
+<summary>More screenshots</summary>
+
+![Settings](docs/screenshots/settings.png)
+
+![Playnite integration](docs/screenshots/playnite.png)
+
+</details>
 
 ## How it works
 
@@ -144,7 +158,7 @@ until you dismiss it. **Settings › Send test notification** checks they work.
 
 ```powershell
 py -3.13 -m venv .venv
-.venv\Scripts\python -m pip install PySide6 psutil pyinstaller pytest pytest-timeout
+.venv\Scripts\python -m pip install -r requirements-dev.txt
 .venv\Scripts\pythonw QResGUI.pyw         # run from source
 .venv\Scripts\python -m pytest            # tests (don't change the real resolution)
 .\build.ps1                               # -> dist\QResGUI\
@@ -153,6 +167,13 @@ py -3.13 -m venv .venv
 ```
 
 The version lives in `qres_gui/__init__.py` (mirrored in `pyproject.toml`).
+
+**Releases are built by CI.** GitHub Actions (`.github/workflows/ci.yml`) runs the
+tests and builds the zip on every push. To release: add the version's section to
+`CHANGELOG.md`, bump the version, push, then push a `v<version>` tag. CI checks
+the tag matches the version and publishes the pre-release with notes from the
+changelog. `tools/screenshots.py` regenerates the README screenshots from a
+made-up demo library.
 
 Run from source, the GUI writes launch options that call
 `.venv\Scripts\pythonw.exe QResLauncher.pyw`. That works, but the built exe

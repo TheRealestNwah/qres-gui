@@ -1,0 +1,71 @@
+name: CI
+
+# Every push and pull request: run the tests and build the release zip on a
+# clean Windows machine. Pushing a v* tag also publishes that zip as a GitHub
+# pre-release, with notes from CHANGELOG.md.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Test
+        run: python -m pytest -q
+
+      - name: Build release zip
+        shell: pwsh
+        run: ./package.ps1 -Python python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QResGUI-win64
+          path: release/*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test-and-build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: QResGUI-win64
+          path: release
+
+      - name: Check the tag matches the version
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path qres_gui/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} doesn't match version $version" }
+
+      - name: Publish pre-release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          ./tools/release-notes.ps1 -Version $version | Set-Content notes.md -Encoding utf8
+          $zip = (Get-ChildItem release/*.zip).FullName
+          gh release create "${{ github.ref_name }}" $zip --prerelease --verify-tag --title "QRes GUI $version" --notes-file notes.md

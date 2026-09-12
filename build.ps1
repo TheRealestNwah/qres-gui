@@ -1,13 +1,16 @@
 # Builds dist\QResGUI\ (QResGUI.exe + QResLauncher.exe).
 # Steam launch options and shortcuts point at QResLauncher.exe by absolute
 # path, so pick a permanent home for the folder before hooking games up.
+#
+# -Python picks the interpreter (default: the project's .venv; CI passes "python").
+param([string]$Python)
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
-$py = Join-Path $root ".venv\Scripts\python.exe"
+if (-not $Python) { $Python = Join-Path $root ".venv\Scripts\python.exe" }
 
-& $py (Join-Path $root "tools\make_icon.py") (Join-Path $root "build\icon.ico")
+& $Python (Join-Path $root "tools\make_icon.py") (Join-Path $root "build\icon.ico")
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
-& $py -m PyInstaller --noconfirm --clean --distpath (Join-Path $root "dist") --workpath (Join-Path $root "build\pyinstaller") (Join-Path $root "QResGUI.spec")
+& $Python -m PyInstaller --noconfirm --clean --distpath (Join-Path $root "dist") --workpath (Join-Path $root "build\pyinstaller") (Join-Path $root "QResGUI.spec")
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 Copy-Item (Join-Path $root "build\icon.png") (Join-Path $root "dist\QResGUI\icon.png")  # for notifications
 

@@ -23,6 +23,14 @@ def _browse_row(edit: QLineEdit, button: QPushButton) -> QWidget:
     return row
 
 
+def _left(widget: QWidget) -> QHBoxLayout:
+    """A form cell holding `widget` at its natural size, on the left."""
+    row = QHBoxLayout()
+    row.addWidget(widget)
+    row.addStretch()
+    return row
+
+
 def licenses_folder():
     """This program's and its third-party components' license texts."""
     return paths.app_folder() / "licenses"
@@ -30,6 +38,9 @@ def licenses_folder():
 
 def _hint(text: str) -> QLabel:
     label = QLabel(text, objectName="muted", wordWrap=True)
+    # The form sizes wrapped labels for their minimum width; without a realistic
+    # one it reserves room for extra lines and leaves gaps around the text.
+    label.setMinimumWidth(460)
     return label
 
 
@@ -37,7 +48,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent, cfg: dict, modes: list[display.Mode], on_remove_hooks=None, on_playnite=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setMinimumWidth(620)
+        self.setMinimumWidth(700)
         self.modes = modes
 
         self.qres = QLineEdit(cfg.get("qres_path", ""), placeholderText="Path to QRes.exe")
@@ -84,24 +95,18 @@ class SettingsDialog(QDialog):
         form.addRow("Wait after switching", self.switch_delay)
         form.addRow("Wait before switching back", self.restore_delay)
         form.addRow("Launcher", _browse_row(launcher, logs))
-        test_toast = QPushButton("Send test notification", clicked=self._test_notification)
-        row = QHBoxLayout()
-        row.addWidget(test_toast)
-        row.addWidget(_hint("Launcher problems show up as Windows notifications. While a fullscreen game "
-                            "has focus, Windows holds them in the notification centre instead."), 1)
-        form.addRow("Notifications", row)
+        # Hints go on their own rows under their buttons: beside a button, a
+        # wrapped label doesn't get the height it needs and ends up cut off.
+        form.addRow("Notifications", _left(QPushButton("Send test notification", clicked=self._test_notification)))
+        form.addRow("", _hint("Launcher problems show up as Windows notifications. While a fullscreen game "
+                              "has focus, Windows holds them in the notification centre instead."))
         if on_playnite:
-            row = QHBoxLayout()
-            row.addWidget(QPushButton("Playnite integration…", clicked=on_playnite))
-            row.addWidget(_hint("Switch resolution for games started from Playnite, whatever the store."), 1)
-            form.addRow("Playnite", row)
+            form.addRow("Playnite", _left(QPushButton("Playnite integration…", clicked=on_playnite)))
+            form.addRow("", _hint("Switch resolution for games started from Playnite, whatever the store."))
         if on_remove_hooks:
-            unhook = QPushButton("Remove all hooks…", clicked=on_remove_hooks)
-            row = QHBoxLayout()
-            row.addWidget(unhook)
-            row.addWidget(_hint("Takes QRes out of every Steam game's launch options and Playnite's scripts, "
-                                "deletes the game shortcuts and turns switching off. Resolution choices are kept."), 1)
-            form.addRow("Hooks", row)
+            form.addRow("Hooks", _left(QPushButton("Remove all hooks…", clicked=on_remove_hooks)))
+            form.addRow("", _hint("Takes QRes out of every Steam game's launch options and Playnite's scripts, "
+                                  "deletes the game shortcuts and turns switching off. Resolution choices are kept."))
 
         row = QHBoxLayout()
         row.addWidget(QLabel(f"QRes GUI {__version__} · MIT license"))
@@ -116,6 +121,11 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(buttons)
+        # Open exactly as tall as the wrapped hints need at this width; a taller
+        # window spreads the spare height over them as gaps.
+        width = self.minimumWidth()
+        self.resize(width, layout.totalHeightForWidth(width) if layout.hasHeightForWidth()
+                    else self.sizeHint().height())
 
     def _test_notification(self) -> None:
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
