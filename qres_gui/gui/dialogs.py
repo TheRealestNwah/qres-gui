@@ -7,10 +7,10 @@ from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
+    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
-from .. import display, paths
+from .. import display, notify, paths
 
 
 def _browse_row(edit: QLineEdit, button: QPushButton) -> QWidget:
@@ -76,6 +76,12 @@ class SettingsDialog(QDialog):
         form.addRow("Wait after switching", self.switch_delay)
         form.addRow("Wait before switching back", self.restore_delay)
         form.addRow("Launcher", _browse_row(launcher, logs))
+        test_toast = QPushButton("Send test notification", clicked=self._test_notification)
+        row = QHBoxLayout()
+        row.addWidget(test_toast)
+        row.addWidget(_hint("Launcher problems show up as Windows notifications. While a fullscreen game "
+                            "has focus, Windows holds them in the notification centre instead."), 1)
+        form.addRow("Notifications", row)
         if on_remove_hooks:
             unhook = QPushButton("Remove all hooks…", clicked=on_remove_hooks)
             row = QHBoxLayout()
@@ -90,6 +96,17 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(buttons)
+
+    def _test_notification(self) -> None:
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            ok = notify.toast("QRes GUI test notification", "Launcher problems will show up like this.")
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not ok:
+            QMessageBox.warning(self, "Notifications",
+                                "Windows refused the notification; problems will appear as message boxes. "
+                                f"Details are in {paths.log_path()}.")
 
     def _browse_qres(self) -> None:
         start = os.path.dirname(self.qres.text()) if self.qres.text() else ""

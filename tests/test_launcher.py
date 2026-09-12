@@ -8,14 +8,14 @@ import time
 
 import pytest
 
-from qres_gui import config, display, launcher, session
+from qres_gui import config, display, launcher, notify, session
 
 
 @pytest.fixture(autouse=True)
 def isolated_appdata(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     monkeypatch.setattr(launcher, "EXIT_GRACE", 0.5)
-    monkeypatch.setattr(launcher, "_message", lambda text: pytest.fail(f"unexpected message box: {text}"))
+    monkeypatch.setattr(notify, "notify", lambda *a, **k: pytest.fail(f"unexpected notification: {a}"))
 
 
 def _sleep_cmd(seconds: float) -> list[str]:

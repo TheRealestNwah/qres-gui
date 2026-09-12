@@ -24,7 +24,7 @@ from logging.handlers import RotatingFileHandler
 
 import psutil
 
-from . import config, display, paths, session
+from . import config, display, notify, paths, session
 
 log = logging.getLogger("qres.launcher")
 
@@ -58,10 +58,22 @@ def main(argv: list[str] | None = None) -> int:
             return guard(int(argv[1]))
     except Exception as exc:
         log.exception("launcher failed")
-        _message(f"{exc}\n\nDetails are in {paths.log_path()}")
+        if argv[:1] == ["run"]:
+            notify.notify(f"Couldn't start {_game_name(argv[1])}", str(exc), game_id=argv[1])
+        else:
+            notify.notify("QRes Launcher failed", str(exc))
         return 1
-    _message("Usage:\n  QResLauncher run <game-id> [command...]\n  QResLauncher restore")
+    # Someone ran the exe by hand, so a plain message box is the right answer.
+    notify._message_box("QRes Launcher",
+                        "Usage:\n  QResLauncher run <game-id> [command...]\n  QResLauncher restore", "info")
     return 2
+
+
+def _game_name(game_id: str) -> str:
+    try:
+        return config.load().get("games", {}).get(game_id, {}).get("name") or game_id
+    except Exception:
+        return game_id
 
 
 # --- run -------------------------------------------------------------------
@@ -96,6 +108,7 @@ class _Switch:
         self.cfg = cfg
         self.entry = entry
         self.game_id = game_id
+        self.name = entry.get("name") or game_id
         self.qres = display.find_qres(cfg.get("qres_path"))
         self.temporary = bool(cfg.get("temporary", True))
         self.original: display.Mode | None = None
@@ -125,8 +138,8 @@ class _Switch:
             how = display.set_mode(target, self.qres, self.temporary)
             log.info("switched %s -> %s (%s)", original, target, how)
         except display.DisplayError as exc:
-            log.error("%s", exc)
-            _message(f"{exc}\n\nThe game will start at the current resolution.")
+            notify.notify(f"Couldn't switch to {target}",
+                          f"{self.name} is starting at your current resolution. ({exc})", game_id=self.game_id)
             return
         time.sleep(float(self.cfg.get("switch_delay", 1.0)))
 
@@ -139,9 +152,8 @@ class _Switch:
             how = display.set_mode(self.original, self.qres, self.temporary)
             log.info("restored %s (%s)", self.original, how)
         except display.DisplayError as exc:
-            log.error("restore failed: %s", exc)
-            _message(f"Couldn't switch back to {self.original}.\n\n{exc}\n\n"
-                     "Use \"Restore desktop resolution\" in QRes GUI.")
+            notify.notify(f"Couldn't switch back to {self.original}",
+                          f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=self.game_id)
             return  # keep the session record so the GUI can offer to restore
         session.clear(os.getpid())
 
@@ -151,6 +163,8 @@ class _Switch:
 def _start_command(command: list[str]) -> subprocess.Popen | int:
     try:
         return subprocess.Popen(command)
+    except FileNotFoundError:
+        raise LaunchError(f"{command[0]} doesn't exist. Check the game's launch options.") from None
     except OSError as exc:
         if getattr(exc, "winerror", None) != ERROR_ELEVATION_REQUIRED:
             raise
@@ -166,6 +180,9 @@ def _start_target(launch: dict) -> subprocess.Popen | int | None:
         return None
     if kind == "exe":
         path, args = launch["path"], launch.get("args") or ""
+        if not os.path.isfile(path):
+            raise LaunchError(f"{path} doesn't exist. The game may have moved or been uninstalled; "
+                              "rescan or fix it in QRes GUI.")
         cwd = launch.get("cwd") or os.path.dirname(path)
         cmdline = subprocess.list2cmdline([path]) + (f" {args}" if args else "")
         log.info("starting %s in %s", cmdline, cwd)
@@ -352,7 +369,20 @@ def guard(pid: int) -> int:
     if not data or data.get("pid") != pid:
         return 0
     log.warning("launcher %d ended without switching back; restoring", pid)
-    return restore()
+    game_id = data.get("game_id") or ""
+    mode = display.Mode.from_dict(data["original"])
+    try:
+        code = restore()
+    except display.DisplayError as exc:
+        notify.notify(f"Couldn't switch back to {mode}",
+                      f"The launcher for {_game_name(game_id)} closed unexpectedly. "
+                      f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=game_id)
+        return 1
+    if code == 0:
+        notify.notify("Resolution restored",
+                      f"The launcher for {_game_name(game_id)} closed unexpectedly (for example through "
+                      f"Steam's Stop button), so QRes switched back to {mode}.", level="info", game_id=game_id)
+    return code
 
 
 def restore() -> int:
@@ -360,7 +390,7 @@ def restore() -> int:
     data = session.read()
     source = (data or {}).get("original") or cfg.get("desktop_mode")
     if not source:
-        _message("No desktop resolution is saved yet. Open QRes GUI once to record it.")
+        notify.notify("No desktop resolution saved", "Open QRes GUI once so it can record your desktop resolution.")
         return 1
     mode = display.Mode.from_dict(source)
     how = display.set_mode(mode, display.find_qres(cfg.get("qres_path")), bool(cfg.get("temporary", True)))
@@ -401,8 +431,3 @@ def _setup_logging() -> None:
     root = logging.getLogger()
     root.addHandler(handler)
     root.setLevel(logging.INFO)
-
-
-def _message(text: str) -> None:
-    MB_ICONWARNING, MB_SETFOREGROUND, MB_TOPMOST = 0x30, 0x10000, 0x40000
-    ctypes.windll.user32.MessageBoxW(None, text, "QRes Launcher", MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST)

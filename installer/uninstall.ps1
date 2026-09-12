@@ -5,7 +5,8 @@ Uninstalls QRes GUI (install.ps1 copies this script into the install folder).
 .DESCRIPTION
 Takes QRes out of Steam launch options and deletes the game shortcuts first,
 so no game is left pointing at a launcher that no longer exists. Then removes
-the Start menu folder, the Settings > Apps entry and the program folder.
+the Start menu folder, the Settings > Apps entry, the notification
+registration and the program folder.
 Settings in %APPDATA%\QResGUI are kept unless you say otherwise.
 
 .PARAMETER Quiet
@@ -69,6 +70,7 @@ try {
 
     Remove-Item $menu -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item $uninstallKey -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item "HKCU:\Software\Classes\AppUserModelId\QResGUI" -Recurse -Force -ErrorAction SilentlyContinue
 
     $deleteSettings = $RemoveSettings
     if (-not $deleteSettings -and -not $Quiet -and (Test-Path $settings)) {

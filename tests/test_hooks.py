@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from qres_gui import hooks, launcher, shortcuts, vdf
+from qres_gui import hooks, launcher, notify, shortcuts, vdf
 from qres_gui.stores import steam
 from qres_gui.stores.steam import SteamClient, SteamRunningError
 
@@ -70,7 +70,7 @@ def test_steam_running_touches_nothing(fake_env, monkeypatch):
 
 def test_remove_hooks_command_reports_and_signals_steam_running(fake_env, monkeypatch, tmp_path):
     client, _, _ = fake_env
-    monkeypatch.setattr(launcher, "_message", lambda text: pytest.fail(text))
+    monkeypatch.setattr(notify, "notify", lambda *a, **k: pytest.fail(f"unexpected notification: {a}"))
     monkeypatch.setattr(steam, "find_steam", lambda: client.root)
     report = tmp_path / "report.json"
 

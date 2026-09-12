@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+import html
 import os
 import re
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QFileInfo, QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
+from PySide6.QtCore import QFileInfo, QRect, QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFileIconProvider, QFrame, QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QMainWindow, QMessageBox, QPushButton, QSplitter, QStatusBar, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import __version__, config, display, hooks, paths, session, shortcuts
+from .. import __version__, config, display, hooks, notify, paths, session, shortcuts
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
@@ -147,9 +148,54 @@ class MainWindow(QMainWindow):
         cl.setContentsMargins(0, 0, 0, 0)
         cl.setSpacing(0)
         cl.addWidget(top)
+        cl.addWidget(self._build_event_bar())
         cl.addWidget(body, 1)
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
+
+    def _build_event_bar(self) -> QFrame:
+        """Banner for the latest launcher problem the user hasn't dismissed yet."""
+        self.event_bar = QFrame(objectName="eventBar")
+        row = QHBoxLayout(self.event_bar)
+        row.setContentsMargins(18, 8, 18, 8)
+        self.event_label = QLabel(wordWrap=True)
+        self.event_label.setTextFormat(Qt.TextFormat.RichText)
+        row.addWidget(self.event_label, 1)
+        row.addWidget(QPushButton("Open log", clicked=lambda: QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(paths.log_path())))))
+        row.addWidget(QPushButton("Dismiss", clicked=self._dismiss_events))
+        self.event_bar.hide()
+        self._events_mtime = None
+        return self.event_bar
+
+    def _refresh_events(self) -> None:
+        try:
+            mtime = notify.events_path().stat().st_mtime
+        except OSError:
+            mtime = None
+        if mtime == self._events_mtime:
+            return
+        self._events_mtime = mtime
+        seen = float(self.cfg.get("events_seen", 0))
+        unseen = [e for e in notify.read_events() if float(e.get("time", 0)) > seen]
+        if not unseen:
+            self.event_bar.hide()
+            return
+        latest = unseen[-1]
+        when = time.strftime("%a %H:%M", time.localtime(float(latest["time"])))
+        more = f"  ·  {len(unseen) - 1} earlier" if len(unseen) > 1 else ""
+        color = theme.ACCENT if latest.get("level") == "info" else theme.WARN
+        self.event_label.setText(
+            f"<span style='color:{color}; font-weight:600'>{html.escape(latest.get('title', ''))}</span>"
+            f"&nbsp;&nbsp;{html.escape(latest.get('message', ''))}"
+            f"<span style='color:{theme.MUTED}'>&nbsp;&nbsp;·&nbsp;&nbsp;{when}{more}</span>")
+        self.event_bar.show()
+
+    def _dismiss_events(self) -> None:
+        times = [float(e.get("time", 0)) for e in notify.read_events()]
+        self.cfg["events_seen"] = max(times, default=time.time())
+        self._save_now()
+        self.event_bar.hide()
 
     # --- data --------------------------------------------------------------
 
@@ -553,6 +599,7 @@ class MainWindow(QMainWindow):
             session.clear()
 
     def _poll_state(self) -> None:
+        self._refresh_events()
         try:
             current = display.current_mode()
         except display.DisplayError:

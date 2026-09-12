@@ -23,6 +23,7 @@ STORE_COLORS = {
 STYLESHEET = f"""
 QWidget {{ font-size: 13px; }}
 QFrame#topBar {{ background: #16181b; border-bottom: 1px solid #2a2d33; }}
+QFrame#eventBar {{ background: #2a2518; border-bottom: 1px solid #4a3f22; }}
 QLabel#muted {{ color: {MUTED}; }}
 QLabel#caption {{ color: {MUTED}; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }}
 QLabel#desktopMode {{ font-size: 17px; font-weight: 600; }}

@@ -1,4 +1,4 @@
-"""Render the app icon to a multi-size .ico for the PyInstaller build.
+"""Render the app icon to a multi-size .ico (and a 256 px .png) for the build.
 
     python tools/make_icon.py build/icon.ico
 """
@@ -35,7 +35,9 @@ def main(out: Path) -> None:
         offset += len(data)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(header + entries + b"".join(images))
-    print(f"wrote {out}")
+    # Toast notifications want a plain image file.
+    out.with_suffix(".png").write_bytes(images[-1])
+    print(f"wrote {out} and {out.with_suffix('.png').name}")
 
 
 if __name__ == "__main__":

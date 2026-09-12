@@ -9,4 +9,5 @@ $py = Join-Path $root ".venv\Scripts\python.exe"
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 & $py -m PyInstaller --noconfirm --clean --distpath (Join-Path $root "dist") --workpath (Join-Path $root "build\pyinstaller") (Join-Path $root "QResGUI.spec")
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
+Copy-Item (Join-Path $root "build\icon.png") (Join-Path $root "dist\QResGUI\icon.png")  # for notifications
 Write-Host "Built $(Join-Path $root 'dist\QResGUI')"

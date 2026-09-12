@@ -10,11 +10,12 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
-> **Status: early alpha (0.1.0-alpha.1).** Resolution switching, restoring,
-> the installer and game detection work. Not yet tested end to end: a real
-> Steam launch through `%command%`, Steam's *Stop* button, the Steam overlay,
-> and whether Steam keeps the launch options across restarts. Expect rough
-> edges, and please report what you find.
+> **Status: early alpha (0.1.0-alpha.2).** Verified on real hardware:
+> launching a Steam game through its launch options (MGS4, including its
+> launcher handing off to the game), switching back when it closes, the Steam
+> overlay, launch options surviving a Steam restart, and the installer. Not
+> yet tested: Steam's *Stop* button, anti-cheat games, and Epic / Ubisoft
+> detection. Expect rough edges, and please report what you find.
 >
 > Windows 10/11 only. The executables aren't code-signed, so SmartScreen may
 > warn the first time you run them.
@@ -52,6 +53,15 @@ not from the store's own button. The store can't be told to go through the launc
 - If both are killed anyway, the GUI notices on its next start and offers to
   restore. **Restore desktop resolution** in the top bar also works any time,
   as does `QResLauncher.exe restore`.
+
+### Notifications
+
+The launcher never stops to show a dialog. If it can't switch or switch back,
+or the guard had to step in, you get a Windows notification. The game still
+starts at your current resolution if switching failed. While a fullscreen
+game has focus, Windows holds notifications in the notification centre
+instead of popping them up, so QRes GUI also shows the latest one in a banner
+until you dismiss it. **Settings › Send test notification** checks they work.
 
 ## Using it
 
@@ -115,6 +125,7 @@ Layout:
 - `qres_gui/display.py`: read modes (EnumDisplaySettings), switch via QRes / API
 - `qres_gui/launcher.py`: the `run` / `restore` / `remove-hooks` / `guard` entry points
 - `qres_gui/hooks.py`: finds and removes Steam launch options and game shortcuts
+- `qres_gui/notify.py`: toast notifications and the event record behind the GUI banner
 - `qres_gui/vdf.py`: Valve KeyValues reader/writer (round-trips Steam's files byte for byte)
 - `qres_gui/stores/`: per-store detection; `steam.py` also edits launch options
 - `qres_gui/gui/`: PySide6 UI
