@@ -453,11 +453,12 @@ def _wait(started: subprocess.Popen | int | None, watch: set[str], grace: float 
 def _spawn_guard(owner: int, token: str) -> threading.Thread:
     """Start the guard, which restores the resolution if the owner goes away first.
 
-    It has to outlive whatever ends the owner. Steam runs games in a job that
-    doesn't allow processes to break away, and its Stop button ends the whole
-    job, so a guard started from inside it would die with the game. When
-    breaking away is refused, the guard is started through WMI instead, which
-    creates it outside the job (in the same session, with the same desktop).
+    It has to outlive whatever ends the owner, and Steam's Stop button ends
+    the whole process tree it launched - following parent links, so any child
+    of ours goes with it, job or no job. The guard is therefore created
+    through WMI (Win32_Process.Create): its parent is the WMI host, outside
+    our tree and any job, in the same session with the same desktop. Only if
+    that fails is it started as our own (detached, breakaway) child.
     Runs on a thread because the WMI route takes a second or so.
     """
     cmd = paths.launcher_command() + ["guard", str(owner), token, os.environ.get("APPDATA", "")]
@@ -466,20 +467,17 @@ def _spawn_guard(owner: int, token: str) -> threading.Thread:
     base = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
 
     def start() -> None:
-        try:
-            subprocess.Popen(cmd, creationflags=base | CREATE_BREAKAWAY_FROM_JOB, **quiet)
-            log.info("guard started")
-            return
-        except OSError as exc:
-            log.info("can't leave the job we were started in (%s); starting the guard through WMI", exc)
         if _start_outside_jobs(cmd):
             log.info("guard started through WMI")
             return
-        try:
-            subprocess.Popen(cmd, creationflags=base, **quiet)
-            log.warning("guard started inside our job; it may be closed along with the game")
-        except OSError as exc:
-            log.warning("couldn't start the guard process: %s", exc)
+        for flags in (base | CREATE_BREAKAWAY_FROM_JOB, base):
+            try:
+                subprocess.Popen(cmd, creationflags=flags, **quiet)
+                log.warning("guard started as our own child; ending our process tree would end it too")
+                return
+            except OSError as exc:
+                error = exc
+        log.warning("couldn't start the guard process: %s", error)
 
     thread = threading.Thread(target=start, name="guard-start", daemon=True)
     thread.start()
@@ -487,7 +485,7 @@ def _spawn_guard(owner: int, token: str) -> threading.Thread:
 
 
 def _start_outside_jobs(cmd: list[str]) -> bool:
-    """Create a process through WMI (Win32_Process.Create), so no job of ours contains it."""
+    """Create a process through WMI (Win32_Process.Create): outside our process tree and jobs."""
     line = subprocess.list2cmdline(cmd).replace("'", "''")
     script = ("$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create "
               f"-Arguments @{{ CommandLine = '{line}' }}; exit [int]($r.ReturnValue -ne 0)")

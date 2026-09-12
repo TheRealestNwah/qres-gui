@@ -130,6 +130,35 @@ def test_guard_survives_a_steam_style_job_being_ended(tmp_path):
             psutil.Process(guard_pid).kill()
 
 
+def test_guard_survives_its_starters_process_tree_being_killed(tmp_path):
+    """Steam's Stop ends the launched process and all its descendants, like "End process tree"."""
+    guard_pid_file = tmp_path / "guard.pid"
+    stand_in_guard = tmp_path / "guard_stand_in.py"
+    stand_in_guard.write_text(
+        f"import os, time; open('{guard_pid_file.as_posix()}', 'w').write(str(os.getpid())); time.sleep(60)")
+    starter = tmp_path / "starter.py"
+    starter.write_text(textwrap.dedent(f"""
+        import os, sys, time
+        sys.path.insert(0, {ROOT!r})
+        from qres_gui import launcher, paths
+        paths.launcher_command = lambda: [sys.executable, {str(stand_in_guard)!r}]
+        launcher._spawn_guard(os.getpid(), "token").join(60)
+        time.sleep(60)
+    """))
+    path = os.pathsep.join(p for p in sys.path if p and os.path.isdir(p))
+    proc = subprocess.Popen([sys._base_executable, str(starter)], env={**os.environ, "PYTHONPATH": path})
+    guard_pid = int(_wait_for_file(guard_pid_file, timeout=60))
+    try:
+        root = psutil.Process(proc.pid)
+        for p in root.children(recursive=True) + [root]:  # "End process tree"
+            p.kill()
+        time.sleep(0.5)
+        assert psutil.pid_exists(guard_pid), "the guard was in the starter's process tree"
+    finally:
+        if psutil.pid_exists(guard_pid):
+            psutil.Process(guard_pid).kill()
+
+
 def test_guard_waits_for_a_game_that_outlives_its_owner(tmp_path, monkeypatch):
     """Playnite restarting mid-game: switch back when the game exits, not straight away."""
     monkeypatch.setattr(launcher, "GUARD_POLL", 0.1)
