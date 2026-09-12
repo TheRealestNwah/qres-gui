@@ -85,6 +85,7 @@ def test_guard_restores_and_says_so(isolated, monkeypatch):
     monkeypatch.setattr(launcher, "GUARD_POLL", 0.05)
     desktop = display.Mode(3440, 1440, 165)
     calls = []
+    monkeypatch.setattr(display, "current_mode", lambda: calls[-1] if calls else display.Mode(2560, 1440, 165))
     monkeypatch.setattr(display, "set_mode", lambda mode, qres, temporary: calls.append(mode) or "stub")
     cfg = config.load()
     cfg["games"]["steam:9"] = {"name": "MGS4"}

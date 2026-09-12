@@ -102,28 +102,34 @@ def run(game_id: str, command: list[str]) -> int:
 
     watch = {w.strip().lower() for w in entry.get("watch", []) if w.strip()}
     quick = bool(entry.get("quick_restore"))
-    switch = _Switch(cfg, entry, game_id) if entry.get("enabled") else None
+    started_from = command[0] if command else (entry.get("launch") or {}).get("path", "")
+    install_dir = entry.get("install_dir") or (os.path.dirname(started_from) if started_from else "")
+    switch = _Switch(cfg, entry, game_id, install_dir=install_dir) if entry.get("enabled") else None
     if switch is None:
         log.info("resolution switching is off for %s; launching as-is", game_id)
     else:
-        switch.apply()
-    try:
-        started = start()
-        return _wait(started, watch, grace=0.0 if quick else None)
-    finally:
-        if switch is not None:
-            switch.restore()
+        switch.apply()  # before joining the job below, so the guard it starts stays out of it
+    with _CloseGameWithUs():
+        try:
+            started = start()
+            return _wait(started, watch, grace=0.0 if quick else None)
+        finally:
+            if switch is not None:
+                switch.restore()
 
 
 class _Switch:
     """One resolution switch. The owner (this launcher, or Playnite) keeps it alive."""
 
-    def __init__(self, cfg: dict, entry: dict, game_id: str, owner: int | None = None, **extra):
+    def __init__(self, cfg: dict, entry: dict, game_id: str, owner: int | None = None,
+                 install_dir: str = "", **extra):
         self.cfg = cfg
         self.entry = entry
         self.game_id = game_id
         self.owner = owner or os.getpid()
-        self.extra = extra  # stored in the session record, e.g. source="playnite"
+        # Stored in the session record. The folder and watch names let the guard
+        # recognise the game if the owner goes away while it's still running.
+        self.extra = {"install_dir": install_dir, "watch": list(entry.get("watch") or []), **extra}
         self.name = entry.get("name") or game_id
         self.qres = display.find_qres(cfg.get("qres_path"))
         self.temporary = bool(cfg.get("temporary", True))
@@ -181,6 +187,73 @@ class _Switch:
                           f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=self.game_id)
             return  # keep the session record so the GUI can offer to restore
         session.clear(token=self.token)
+
+
+# --- tying the game to the launcher ----------------------------------------
+
+JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+
+
+class _JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+        ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+        ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+        ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD),
+    ]
+
+
+class _JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("BasicLimitInformation", _JOBOBJECT_BASIC_LIMIT_INFORMATION),
+        ("IoInfo", ctypes.c_uint64 * 6),
+        ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t),
+    ]
+
+
+class _CloseGameWithUs:
+    """Put the launcher, and so everything it starts, in a job Windows closes if the launcher is killed.
+
+    Steam's Stop button ends the process Steam started - this launcher, not
+    the game - so without this the game would keep running on its own. On
+    any normal way out of the block, including errors, the kill flag is
+    cleared first: only an outside kill closes the game.
+    """
+
+    def __enter__(self):
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateJobObjectW.restype = wintypes.HANDLE
+        k32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        self.k32 = k32
+        self.handle = k32.CreateJobObjectW(None, None)
+        if not self.handle:
+            log.warning("couldn't create a job object; Steam's Stop won't close the game")
+            return self
+        if not (self._set(JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
+                and k32.AssignProcessToJobObject(self.handle, k32.GetCurrentProcess())):
+            log.warning("couldn't join a job object (%s); Steam's Stop won't close the game",
+                        ctypes.WinError(ctypes.get_last_error()))
+            k32.CloseHandle(self.handle)
+            self.handle = None
+        return self
+
+    def _set(self, flags: int) -> bool:
+        info = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = flags
+        return bool(self.k32.SetInformationJobObject(
+            self.handle, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, ctypes.byref(info), ctypes.sizeof(info)))
+
+    def __exit__(self, *exc) -> None:
+        if self.handle:
+            self._set(JOB_OBJECT_LIMIT_BREAKAWAY_OK)  # leave anything still running alone
+            self.k32.CloseHandle(self.handle)
+            self.handle = None
 
 
 # --- starting the game -----------------------------------------------------
@@ -392,11 +465,43 @@ def _still_ours(pid: int, token: str | None) -> dict | None:
     return data
 
 
+class _GameWatch:
+    """Recognises a game's processes by its install folder and watched exe names."""
+
+    MAX_DEPTH = 6
+
+    def __init__(self, data: dict):
+        folder = str(data.get("install_dir") or "")
+        self.folder = os.path.normcase(os.path.normpath(folder)) if folder and os.path.isdir(folder) else ""
+        self.watch = {str(w).lower() for w in data.get("watch") or [] if w}
+        self.folder_exes: set[str] = set()
+        if self.folder:
+            for dirpath, dirnames, filenames in os.walk(folder):
+                if os.path.relpath(dirpath, folder).count(os.sep) + 1 >= self.MAX_DEPTH:
+                    dirnames[:] = []
+                self.folder_exes.update(f.lower() for f in filenames if f.lower().endswith(".exe"))
+
+    def running(self) -> bool:
+        for pid, _, name in _snapshot():
+            if name in self.watch:
+                return True
+            if name in self.folder_exes:
+                try:
+                    exe = os.path.normcase(psutil.Process(pid).exe())
+                except psutil.Error:
+                    continue
+                if exe.startswith(self.folder + os.sep):
+                    return True
+        return False
+
+
 def guard(pid: int, token: str | None = None) -> int:
-    """Wait while the owner lives and the switch is still its; restore if the owner dies first.
+    """Wait while the owner lives and the switch is still its; then clean up.
 
     Polls rather than waiting on the process, because a Playnite owner outlives
-    many switches and the guard must leave once its own switch is undone.
+    many switches and the guard must leave once its own switch is undone. If
+    the owner dies while the game is still running (Playnite restarting, the
+    launcher killed), the guard takes the switch over and waits for the game.
     """
     while (data := _still_ours(pid, token)) and session.owner_alive(data):
         time.sleep(GUARD_POLL)
@@ -405,9 +510,25 @@ def guard(pid: int, token: str | None = None) -> int:
     game_id = data.get("game_id") or ""
     name = _game_name(game_id)
     cause = (f"Playnite closed while {name} was running" if data.get("source") == "playnite"
-             else f"The launcher for {name} closed unexpectedly (for example through Steam's Stop button)")
-    log.warning("owner %d ended without switching back; restoring", pid)
+             else f"The launcher for {name} closed unexpectedly")
+
+    game = _GameWatch(data)
+    waited = game.running()
+    if waited:
+        log.info("owner %d is gone but %s is still running; switching back when it exits", pid, game_id)
+        data = session.adopt(data)
+        while (current := _still_ours(os.getpid(), data["token"])) and game.running():
+            time.sleep(GUARD_POLL)
+        if not current:
+            return 0  # something newer took over
+        data = current
+
     mode = display.Mode.from_dict(data["original"])
+    if display.current_mode() == mode:
+        log.info("owner %d is gone; the display is already back at %s", pid, mode)
+        session.clear(token=data.get("token"))
+        return 0
+    log.warning("owner %d ended without switching back; restoring", pid)
     try:
         code = restore()
     except display.DisplayError as exc:
@@ -415,8 +536,9 @@ def guard(pid: int, token: str | None = None) -> int:
                       f"{cause}. Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=game_id)
         return 1
     if code == 0:
-        notify.notify("Resolution restored", f"{cause}, so QRes switched back to {mode}.",
-                      level="info", game_id=game_id)
+        after = f", so QRes switched back to {mode} once the game exited" if waited else \
+            f", so QRes switched back to {mode}"
+        notify.notify("Resolution restored", f"{cause}{after}.", level="info", game_id=game_id)
     return code
 
 
@@ -457,7 +579,8 @@ def playnite_start(payload: str) -> int:
         log.warning("no running Playnite to tie the switch to; not switching")
         return 0
     log.info("Playnite is starting %s (%s)", info.get("name"), game_id)
-    _Switch(cfg, entry, game_id, owner=owner, source="playnite", playnite_id=str(info.get("id"))).apply()
+    _Switch(cfg, entry, game_id, owner=owner, install_dir=entry.get("install_dir") or str(info.get("installDir") or ""),
+            source="playnite", playnite_id=str(info.get("id"))).apply()
     return 0
 
 

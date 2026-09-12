@@ -28,18 +28,29 @@ def write(original: dict, game_id: str, owner: int | None = None, **extra) -> st
     """Record a switch owned by `owner` (default: this process); returns its token."""
     pid = owner or os.getpid()
     token = uuid.uuid4().hex
-    data = {
+    _store({
         "pid": pid,
         "create_time": psutil.Process(pid).create_time(),
         "original": original,
         "game_id": game_id,
         "token": token,
         **extra,
-    }
+    })
+    return token
+
+
+def adopt(data: dict) -> dict:
+    """Make this process the owner of a record whose owner has gone (same token)."""
+    pid = os.getpid()
+    data = {**data, "pid": pid, "create_time": psutil.Process(pid).create_time()}
+    _store(data)
+    return data
+
+
+def _store(data: dict) -> None:
     tmp = paths.session_path().with_suffix(".tmp")
     tmp.write_text(json.dumps(data), encoding="utf-8")
     os.replace(tmp, paths.session_path())
-    return token
 
 
 def owner_alive(data: dict) -> bool:

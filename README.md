@@ -75,7 +75,13 @@ from Playnite, and still switches when started from Steam directly.
   the registry, so a reboot always comes back at your normal resolution.
 - Before switching, the launcher records the desktop mode in
   `%APPDATA%\QResGUI\session.json` and starts a small detached guard process.
-  If the launcher is killed (e.g. Steam's *Stop* button), the guard switches back.
+- Steam's *Stop* button ends the launcher, the process Steam started. The
+  game is tied to the launcher, so it closes too, as Steam expects. A normal
+  exit never closes anything.
+- If whatever owns the switch goes away while the game is still running
+  (Playnite restarting for an add-on update, the launcher killed), the guard
+  takes over, keeps watching the game's processes, and switches back when the
+  game exits.
 - If both are killed anyway, the GUI notices on its next start and offers to
   restore. **Restore desktop resolution** in the top bar also works any time,
   as does `QResLauncher.exe restore`.
