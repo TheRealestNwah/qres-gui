@@ -25,6 +25,10 @@ DEFAULTS: dict = {
     "restore_delay": 1.0,     # seconds to wait after the game exits before switching back
     "default_target": {"width": 2560, "height": 1440, "refresh": 0},
     "desktop_mode": None,     # fallback for "Restore desktop resolution"
+    "check_updates": True,    # ask GitHub for a newer release at most once a day
+    "update_last_check": 0,
+    "update_available": None, # {"version", "url"} from the last check, until installed or dismissed
+    "update_dismissed": "",   # version the user said "Later" to
     "games": {},
 }
 

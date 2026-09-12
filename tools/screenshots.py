@@ -21,7 +21,7 @@ os.environ["APPDATA"] = tempfile.mkdtemp(prefix="qres-shots-")
 from PySide6.QtGui import QFont  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from qres_gui import display, paths, playnite, shortcuts  # noqa: E402
+from qres_gui import display, paths, playnite, shortcuts, updates  # noqa: E402
 from qres_gui.gui import main_window, theme  # noqa: E402
 from qres_gui.gui.dialogs import PlayniteDialog, SettingsDialog  # noqa: E402
 from qres_gui.stores import Game, steam  # noqa: E402
@@ -36,6 +36,7 @@ display.list_modes = lambda: list(MODES)
 display.current_mode = lambda: MODES[0]
 display.find_qres = lambda *a: r"C:\Tools\QRes\QRes.exe"
 display.monitor_count = lambda: 1
+updates.check = lambda current=None: None
 paths.launcher_command = lambda: list(LAUNCHER)
 shortcuts.desktop_dir = lambda: work / "Desktop"
 shortcuts.start_menu_dir = lambda: work / "Programs" / "QRes GUI"
@@ -96,10 +97,12 @@ win.grab().save(str(OUT / "main.png"))
 
 for name, dialog in (("playnite", PlayniteDialog(win)), ("settings", SettingsDialog(win, win.cfg, win.modes,
                                                                                    on_remove_hooks=lambda: None,
-                                                                                   on_playnite=lambda: None))):
+                                                                                   on_playnite=lambda: None,
+                                                                                   on_check_updates=lambda: (None, "")))):
     dialog.show()
     app.processEvents()
     dialog.grab().save(str(OUT / f"{name}.png"))
     dialog.close()
 print("wrote", ", ".join(sorted(p.name for p in OUT.glob("*.png"))))
+
 

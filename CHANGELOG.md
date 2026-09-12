@@ -3,6 +3,16 @@
 All notable changes to QRes GUI. Versions are marked as pre-releases on
 GitHub until 1.0.
 
+## 0.8.0 — 2026-09-12
+
+### Added
+- **Update check.** At most once a day QRes GUI asks GitHub for this
+  project's release list and, if there's a newer version, shows a banner with
+  **What's new** and **Later** (hidden until the next version). Nothing about
+  your PC is sent and nothing is downloaded for you. **Settings › Updates**
+  turns it off or checks right away; `QResLauncher.exe check-update` logs the
+  result for troubleshooting.
+
 ## 0.7.0 — 2026-09-12
 
 ### Added

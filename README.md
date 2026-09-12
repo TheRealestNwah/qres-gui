@@ -10,7 +10,7 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
-> **Status: early pre-release (0.7.0).** Versions go 0.1.0, 0.2.0, … and
+> **Status: early pre-release (0.8.0).** Versions go 0.1.0, 0.2.0, … and
 > are marked as pre-releases on GitHub until the first stable release.
 > Verified on real hardware:
 > launching a Steam game through its launch options (MGS4, including its
@@ -113,6 +113,14 @@ starts at your current resolution if switching failed. While a fullscreen
 game has focus, Windows holds notifications in the notification centre
 instead of popping them up, so QRes GUI also shows the latest one in a banner
 until you dismiss it. **Settings › Send test notification** checks they work.
+
+### Updates
+
+At most once a day, QRes GUI asks GitHub for this project's release list. If
+there's a newer version, a banner offers **What's new** (the release page) or
+**Later** (hidden until the next version). Nothing about your PC or games is
+sent, and nothing is downloaded or installed for you. Turn it off, or **Check
+now**, under **Settings › Updates**.
 
 ## Using it
 

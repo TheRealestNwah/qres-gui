@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qres_gui import config, display, notify, paths, playnite, shortcuts
+from qres_gui import __version__, config, display, notify, paths, playnite, shortcuts, updates
 from qres_gui.gui import main_window, theme
 from qres_gui.gui.dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
 from qres_gui.stores import Game, steam
@@ -59,6 +59,7 @@ def env(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(display, "current_mode", lambda: DESKTOP)
     monkeypatch.setattr(display, "find_qres", lambda *a: r"C:\Tools\QRes.exe")
     monkeypatch.setattr(display, "monitor_count", lambda: 1)
+    monkeypatch.setattr(updates, "check", lambda current=None: None)  # never reach GitHub from tests
     desktop, menu = tmp_path / "Desktop", tmp_path / "Programs" / "QRes GUI"
     desktop.mkdir()
     monkeypatch.setattr(shortcuts, "desktop_dir", lambda: desktop)
@@ -241,13 +242,60 @@ def test_problem_banner_shows_and_dismisses(win):
     assert win.event_bar.isHidden() and config.load()["events_seen"] > 0
 
 
+def test_update_banner(win, monkeypatch):
+    assert win.update_bar.isHidden()
+    monkeypatch.setattr(updates, "check", lambda current=None: {"version": "99.0.0", "url": "https://x/v99", "name": ""})
+    release, error = win.check_for_updates(wait=True)
+    assert release["version"] == "99.0.0" and not error
+    assert not win.update_bar.isHidden() and "99.0.0 is available" in win.update_label.text()
+    assert config.load()["update_available"] == {"version": "99.0.0", "url": "https://x/v99"}
+
+    win._dismiss_update()  # "Later"
+    assert win.update_bar.isHidden()
+    win._show_update_bar()
+    assert win.update_bar.isHidden()  # stays hidden for that version...
+
+    win._on_update_result({"version": "99.1.0", "url": "u"}, "")
+    assert not win.update_bar.isHidden()  # ...but not for the next one
+
+
+def test_update_check_failures_stay_quiet(win, monkeypatch):
+    def offline(current=None):
+        raise OSError("no network")
+    monkeypatch.setattr(updates, "check", offline)
+    before = config.load().get("update_last_check", 0)
+    assert win.check_for_updates(wait=True) == (None, "no network")
+    assert win.update_bar.isHidden() and config.load().get("update_last_check", 0) == before  # retried later
+
+
+def test_update_banner_clears_once_updated(win):
+    win.cfg["update_available"] = {"version": __version__, "url": "u"}
+    win._show_update_bar()
+    assert win.update_bar.isHidden()
+
+
+def test_automatic_check_respects_the_setting_and_the_daily_limit(win, monkeypatch):
+    calls = []
+    monkeypatch.setattr(win, "check_for_updates", lambda wait=False: calls.append(wait) or (None, ""))
+    win.cfg["check_updates"] = False
+    win._auto_check_updates()
+    win.cfg.update(check_updates=True, update_last_check=__import__("time").time())
+    win._auto_check_updates()
+    assert calls == []
+    win.cfg["update_last_check"] = 0
+    win._auto_check_updates()
+    assert calls == [False]
+
+
 def test_settings_dialog_applies(win):
     dialog = SettingsDialog(win, win.cfg, win.modes)
     dialog.qres.setText(r"D:\Tools\QRes.exe")
     dialog.default_size.setCurrentIndex(dialog.default_size.findData("1920x1080"))
     dialog.temporary.setChecked(False)
     dialog.switch_delay.setValue(2.5)
+    dialog.check_updates.setChecked(False)
     dialog.apply_to(win.cfg)
+    assert win.cfg["check_updates"] is False
     from qres_gui.gui.dialogs import licenses_folder
     assert (licenses_folder() / "LGPL-3.0.txt").is_file()
     assert win.cfg["qres_path"] == r"D:\Tools\QRes.exe"

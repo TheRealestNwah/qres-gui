@@ -45,7 +45,8 @@ def _hint(text: str) -> QLabel:
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent, cfg: dict, modes: list[display.Mode], on_remove_hooks=None, on_playnite=None):
+    def __init__(self, parent, cfg: dict, modes: list[display.Mode], on_remove_hooks=None, on_playnite=None,
+                 on_check_updates=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(700)
@@ -108,6 +109,18 @@ class SettingsDialog(QDialog):
             form.addRow("", _hint("Takes QRes out of every Steam game's launch options and Playnite's scripts, "
                                   "deletes the game shortcuts and turns switching off. Resolution choices are kept."))
 
+        self.check_updates = QCheckBox("Check for updates when QRes GUI starts (at most once a day)")
+        self.check_updates.setChecked(bool(cfg.get("check_updates", True)))
+        self.on_check_updates = on_check_updates
+        row = QHBoxLayout()
+        row.addWidget(self.check_updates)
+        if on_check_updates:
+            row.addWidget(QPushButton("Check now", clicked=self._check_now))
+        row.addStretch()
+        form.addRow("Updates", row)
+        form.addRow("", _hint("Asks GitHub for this project's release list; nothing about your PC or games is "
+                              "sent. New versions are never downloaded or installed for you."))
+
         row = QHBoxLayout()
         row.addWidget(QLabel(f"QRes GUI {__version__} · MIT license"))
         row.addWidget(QPushButton("Licenses…", clicked=lambda: QDesktopServices.openUrl(
@@ -126,6 +139,19 @@ class SettingsDialog(QDialog):
         width = self.minimumWidth()
         self.resize(width, layout.totalHeightForWidth(width) if layout.hasHeightForWidth()
                     else self.sizeHint().height())
+
+    def _check_now(self) -> None:
+        release, error = self.on_check_updates()
+        if error:
+            QMessageBox.warning(self, "Updates", f"Couldn't reach GitHub: {error}")
+        elif release:
+            answer = QMessageBox.question(self, "Updates",
+                                          f"QRes GUI {release['version']} is available (you have {__version__}).\n\n"
+                                          "Open its release page?")
+            if answer == QMessageBox.StandardButton.Yes:
+                QDesktopServices.openUrl(QUrl(release["url"]))
+        else:
+            QMessageBox.information(self, "Updates", f"You're up to date (QRes GUI {__version__}).")
 
     def _test_notification(self) -> None:
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -153,6 +179,7 @@ class SettingsDialog(QDialog):
         cfg["temporary"] = self.temporary.isChecked()
         cfg["switch_delay"] = self.switch_delay.value()
         cfg["restore_delay"] = self.restore_delay.value()
+        cfg["check_updates"] = self.check_updates.isChecked()
 
 
 class PlayniteDialog(QDialog):

@@ -90,6 +90,14 @@ Do Not Disturb is on); they wait in the notification centre, and QRes GUI
 shows the latest one in a banner. **Settings › Send test notification** checks
 they work at all.
 
+## The update check
+
+**Settings › Updates › Check now** says whether GitHub has a newer release. If
+it can't reach GitHub (offline, a firewall, a proxy), it says so and the daily
+check simply tries again another day. `QResLauncher.exe check-update` writes
+the same result to the log. Updating means downloading the new zip from the
+release page and running `install.cmd`; your settings and hooks are kept.
+
 ## QRes.exe isn't found
 
 Point **Settings › QRes.exe** at it, or copy `QRes.exe` into the install

@@ -3,10 +3,11 @@ from __future__ import annotations
 import html
 import os
 import re
+import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QFileInfo, QRect, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QFileInfo, QRect, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QBrush, QColor, QDesktopServices, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFileIconProvider, QFrame, QHBoxLayout, QHeaderView, QLabel,
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import __version__, config, display, hooks, notify, paths, playnite, session, shortcuts
+from .. import __version__, config, display, hooks, notify, paths, playnite, session, shortcuts, updates
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
@@ -54,6 +55,9 @@ class MainWindow(QMainWindow):
         self._poll.start()
         QTimer.singleShot(300, self._check_leftover_session)
         QTimer.singleShot(500, self._ensure_qres)
+        self._update_found.connect(self._on_update_result)
+        self._show_update_bar()                  # from an earlier check
+        QTimer.singleShot(1500, self._auto_check_updates)
 
     # --- setup -------------------------------------------------------------
 
@@ -149,10 +153,78 @@ class MainWindow(QMainWindow):
         cl.setContentsMargins(0, 0, 0, 0)
         cl.setSpacing(0)
         cl.addWidget(top)
+        cl.addWidget(self._build_update_bar())
         cl.addWidget(self._build_event_bar())
         cl.addWidget(body, 1)
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
+
+    # --- updates -------------------------------------------------------------
+
+    _update_found = Signal(object, str)  # (newer release or None, error text); from the checking thread
+
+    def _build_update_bar(self) -> QFrame:
+        self.update_bar = QFrame(objectName="updateBar")
+        row = QHBoxLayout(self.update_bar)
+        row.setContentsMargins(18, 8, 18, 8)
+        self.update_label = QLabel()
+        row.addWidget(self.update_label, 1)
+        row.addWidget(QPushButton("What's new", objectName="primary", clicked=self._open_update_page))
+        row.addWidget(QPushButton("Later", clicked=self._dismiss_update))
+        self.update_bar.hide()
+        return self.update_bar
+
+    def _auto_check_updates(self) -> None:
+        if not self.cfg.get("check_updates", True):
+            return
+        if time.time() - float(self.cfg.get("update_last_check") or 0) < updates.CHECK_INTERVAL:
+            return
+        self.check_for_updates()
+
+    def check_for_updates(self, wait: bool = False) -> tuple[dict | None, str]:
+        """Ask GitHub in the background (or, with `wait`, right away) and show what it says."""
+        def work() -> tuple[dict | None, str]:
+            try:
+                return updates.check(), ""
+            except (OSError, ValueError) as exc:
+                return None, str(exc)
+
+        if wait:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                result = work()
+            finally:
+                QApplication.restoreOverrideCursor()
+            self._on_update_result(*result)
+            return result
+        threading.Thread(target=lambda: self._update_found.emit(*work()), name="update-check", daemon=True).start()
+        return None, ""
+
+    def _on_update_result(self, release: dict | None, error: str) -> None:
+        if error:
+            return  # offline or GitHub unreachable: try again another day
+        self.cfg["update_last_check"] = time.time()
+        self.cfg["update_available"] = {"version": release["version"], "url": release["url"]} if release else None
+        self._save_now()
+        self._show_update_bar()
+
+    def _show_update_bar(self) -> None:
+        available = self.cfg.get("update_available") or {}
+        version = available.get("version", "")
+        show = updates.is_newer(version, __version__) and version != self.cfg.get("update_dismissed")
+        if show:
+            self.update_label.setText(f"<b>QRes GUI {html.escape(version)} is available</b>"
+                                      f"&nbsp;&nbsp;<span style='color:{theme.MUTED}'>You have {__version__}.</span>")
+        self.update_bar.setVisible(show)
+
+    def _open_update_page(self) -> None:
+        url = (self.cfg.get("update_available") or {}).get("url") or updates.RELEASES_PAGE
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _dismiss_update(self) -> None:
+        self.cfg["update_dismissed"] = (self.cfg.get("update_available") or {}).get("version", "")
+        self._save_now()
+        self.update_bar.hide()
 
     def _build_event_bar(self) -> QFrame:
         """Banner for the latest launcher problem the user hasn't dismissed yet."""
@@ -576,7 +648,8 @@ class MainWindow(QMainWindow):
 
     def open_settings(self) -> None:
         dialog = SettingsDialog(self, self.cfg, self.modes, on_remove_hooks=self.remove_all_hooks,
-                                on_playnite=self.open_playnite)
+                                on_playnite=self.open_playnite,
+                                on_check_updates=lambda: self.check_for_updates(wait=True))
         if dialog.exec():
             dialog.apply_to(self.cfg)
             self._save_now()

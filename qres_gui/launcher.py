@@ -4,6 +4,7 @@
     QResLauncher restore
     QResLauncher playnite-start <base64 json>  (Playnite's before-start script)
     QResLauncher playnite-stop <base64 json>   (Playnite's after-exit script)
+    QResLauncher check-update                  (logs whether a newer release exists)
     QResLauncher remove-hooks [report.json]    (used by the uninstaller)
     QResLauncher guard <pid> [token]           (internal)
 
@@ -69,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
             return playnite_start(argv[1])
         if len(argv) == 2 and argv[0] == "playnite-stop":
             return playnite_stop(argv[1])
+        if argv == ["check-update"]:
+            return check_update()
         if argv[:1] == ["remove-hooks"] and len(argv) <= 2:
             return remove_hooks(argv[1] if len(argv) == 2 else None)
         if argv[:1] == ["guard"] and 2 <= len(argv) <= 4:
@@ -649,6 +652,17 @@ def playnite_stop(payload: str) -> int:
         return 1
     log.info("restored %s after Playnite stopped %s (%s)", mode, data.get("game_id"), how)
     session.clear(token=data.get("token"))
+    return 0
+
+
+def check_update() -> int:
+    """Log whether a newer release exists (for troubleshooting): 0 up to date, 1 newer found."""
+    from . import __version__, updates
+    release = updates.check()
+    if release:
+        log.info("QRes GUI %s is available (this is %s): %s", release["version"], __version__, release["url"])
+        return 1
+    log.info("QRes GUI %s is up to date", __version__)
     return 0
 
 
