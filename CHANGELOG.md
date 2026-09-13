@@ -1,7 +1,20 @@
 # Changelog
 
-All notable changes to QRes GUI. Versions before 1.0 are marked as
+All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub.
+
+## 1.0.0 — 2026-09-13
+
+First stable release. Everything from the 0.x pre-releases: per-game
+resolution profiles switched through QRes; Steam launch options, shortcuts,
+and Playnite integration for every other store; safety nets for Steam's Stop
+button and launchers or Playnite going away mid-game; notifications; the
+installer, update check and Getting started guide.
+
+Tested with MGS4 (Steam, and via Playnite) and Stardew Valley (GOG via
+Playnite). Detection for Epic / Ubisoft / Heroic / Amazon / EA / Battle.net /
+Xbox is built to those tools' file formats but not yet tried on a real
+install. Releases are unsigned.
 
 ## 0.10.0 — 2026-09-13
 

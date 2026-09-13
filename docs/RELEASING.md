@@ -14,24 +14,10 @@ uploaded from a local machine.
    pre-release for 0.x, a normal ("latest") release from 1.0 on.
 5. Optionally add a "Superseded by …" line to the previous release's notes.
 
-## 1.0 checklist
+## 1.0 — done 2026-09-13
 
-Before tagging:
-
-- [ ] Real-world checks done: a GOG OSS game started from Playnite, one
-      exclusive-fullscreen and one borderless game.
-- [x] Windows Defender scan of the installed app and the release zip is clean
-      (done for 0.9.0 with signatures 1.459.180.0: clean).
-- [x] Code signing: not for 1.0. Releases stay unsigned; the troubleshooting
-      guide covers SmartScreen (Unblock, or More info › Run anyway).
-      `docs/CODE_SIGNING.md` has the options if that changes.
-
-Then:
-
-- [ ] Rename `## Unreleased` in `CHANGELOG.md` to `## 1.0.0 — <date>` and
-      describe the release.
-- [ ] README: replace the "early pre-release" status box with a short
-      "Tested with" note, keeping the known limitations section.
-- [ ] Bump to `1.0.0`, push, tag `v1.0.0`. CI publishes it as the latest
-      (non-pre-release) release; people on 1.0+ are then only offered finished
-      releases by the update check.
+Kept for reference. 1.0.0 shipped after: a GOG game started from Playnite
+verified (Stardew Valley); a clean Windows Defender scan (0.9.0, signatures
+1.459.180.0); releases left unsigned by choice. The changelog got a `## 1.0.0`
+section, the README status box became a "Tested with" note, and `v1.0.0` was
+tagged so CI published it as the latest (non-pre-release) release.

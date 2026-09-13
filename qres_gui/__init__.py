@@ -1,3 +1,3 @@
 """QRes GUI: per-game resolution switching through QRes."""
 
-__version__ = "0.10.0"
+__version__ = "1.0.0"

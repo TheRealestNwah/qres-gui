@@ -10,17 +10,16 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
-> **Status: early pre-release (0.10.0).** Versions go 0.1.0, 0.2.0, … and
-> are marked as pre-releases on GitHub until the first stable release.
-> Verified on real hardware:
-> launching a Steam game through its launch options (MGS4, including its
-> launcher handing off to the game), switching back when it closes, Steam's
-> *Stop* button (closes the game and switches back), the Steam overlay,
-> launch options surviving a Steam restart, starting that game from Playnite
-> (one switch, back on quit), and the installer. Not yet tested: anti-cheat
-> games, Playnite with non-Steam plugins, and Epic / Ubisoft / Heroic /
-> Amazon / legendary / nile / EA / Battle.net / Xbox detection. Expect rough edges, and please report
-> what you find.
+> **Tested with** a Steam game (MGS4, including its launcher handing off to
+> the game) launched from Steam and from Playnite: switching once, switching
+> back on quit, Steam's *Stop* button (closes the game and switches back), the
+> Steam overlay, launch options surviving a Steam restart, and a GOG game
+> (Stardew Valley) started from Playnite. Also the installer.
+>
+> **Not yet tested on real installs:** anti-cheat games, and detection for
+> Epic / Ubisoft / Heroic / Amazon / EA / Battle.net / Xbox (built to those
+> tools' file formats). Playnite covers those stores anyway. Please report
+> anything you hit.
 >
 > Windows 10/11 only. The executables aren't code-signed, so SmartScreen may
 > warn the first time you run them.
