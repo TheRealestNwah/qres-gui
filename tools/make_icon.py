@@ -29,7 +29,7 @@ def main(out: Path) -> None:
     header = struct.pack("<HHH", 0, 1, len(sizes))
     offset = len(header) + 16 * len(sizes)
     entries = b""
-    for size, data in zip(sizes, images):
+    for size, data in zip(sizes, images, strict=True):
         dim = 0 if size >= 256 else size  # 0 means 256 in the ICO directory
         entries += struct.pack("<BBBBHHII", dim, dim, 0, 0, 1, 32, len(data), offset)
         offset += len(data)

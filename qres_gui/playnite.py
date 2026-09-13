@@ -246,7 +246,7 @@ def state(launcher_cmd: list[str]) -> str:
     def flat(text: str) -> str:  # Playnite's editor may turn \n into \r\n
         return text.replace("\r\n", "\n")
     wanted = scripts(launcher_cmd)
-    return "installed" if all(flat(w) in flat(b) for w, b in zip(wanted, blocks)) else "outdated"
+    return "installed" if all(flat(w) in flat(b) for w, b in zip(wanted, blocks, strict=True)) else "outdated"
 
 
 def _write(update) -> Path:
@@ -270,7 +270,7 @@ def _write(update) -> Path:
 def install(launcher_cmd: list[str]) -> Path:
     """Add (or refresh) our blocks after the user's own global scripts; returns the backup."""
     def update(data: dict) -> None:
-        for key, block in zip(SCRIPT_KEYS, scripts(launcher_cmd)):
+        for key, block in zip(SCRIPT_KEYS, scripts(launcher_cmd), strict=True):
             own = strip_block(data.get(key))
             data[key] = f"{own}\r\n\r\n{block}" if own.strip() else block
     return _write(update)

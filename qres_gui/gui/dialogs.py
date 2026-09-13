@@ -138,6 +138,8 @@ class SettingsDialog(QDialog):
             QUrl.fromLocalFile(str(licenses_folder())))))
         row.addStretch()
         form.addRow("About", row)
+        form.addRow("", _hint("Written by Claude (Anthropic's AI assistant), directed and tested by the "
+                              "maintainer. Open source: github.com/TheRealestNwah/qres-gui"))
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)

@@ -116,7 +116,12 @@ def run(game_id: str, command: list[str]) -> int:
     if switch is None:
         log.info("resolution switching is off for %s; launching as-is", game_id)
     else:
-        switch.apply()  # before joining the job below, so the guard it starts stays out of it
+        try:
+            switch.apply()  # before joining the job below, so the guard it starts stays out of it
+        except Exception as exc:  # a problem switching must never stop the game from starting
+            log.exception("couldn't switch for %s", game_id)
+            notify.notify(f"Couldn't switch the resolution for {switch.name}",
+                          f"The game is starting at your current resolution. ({exc})", game_id=game_id)
     with _CloseGameWithUs():
         try:
             started = start()
@@ -412,6 +417,7 @@ def _wait(started: subprocess.Popen | int | None, watch: set[str], grace: float 
     while True:
         now = time.monotonic()
         table = _snapshot()
+        present = {pid for pid, _, _ in table}
         # Repeat so a child and grandchild that both appeared since the last poll are caught together.
         added = True
         while added:
@@ -419,12 +425,14 @@ def _wait(started: subprocess.Popen | int | None, watch: set[str], grace: float 
             for pid, ppid, name in table:
                 if pid in tracked:
                     continue
-                parent_born = born.get(ppid)
+                # A child of one of ours - live, or already exited. If the parent id
+                # belongs to a live process we don't track, Windows has reused it for
+                # something else, and its children aren't the game's.
+                parent_born = born.get(ppid) if ppid in tracked or ppid not in present else None
                 ours = parent_born is not None and (_create_time(pid) or 0) >= parent_born - 1
                 if ours or name in watch:
                     track(pid, name)
                     added = added or pid in tracked
-        present = {pid for pid, _, _ in table}
         for pid in [p for p, proc in tracked.items() if p not in present or not proc.is_running()]:
             del tracked[pid]
 

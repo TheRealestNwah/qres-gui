@@ -10,7 +10,7 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
-> **Status: early pre-release (0.9.0).** Versions go 0.1.0, 0.2.0, … and
+> **Status: early pre-release (0.10.0).** Versions go 0.1.0, 0.2.0, … and
 > are marked as pre-releases on GitHub until the first stable release.
 > Verified on real hardware:
 > launching a Steam game through its launch options (MGS4, including its
@@ -217,6 +217,16 @@ Layout:
 - After the game exits, switching back waits about 4 s (3 s to allow for games
   that restart themselves, plus the configurable restore delay) unless the game
   has **Switch back the moment the game closes** ticked.
+
+## How it was made
+
+QRes GUI was written by [Claude](https://www.anthropic.com/claude) (Anthropic's
+AI assistant) in Claude Code, directed and tested by the repository owner. AI
+wrote effectively all of the code, tests and docs. It's reviewed before each
+release, but treat it as you would any early software from a single maintainer:
+read the code if that matters to you (it's all here and MIT-licensed), and see
+[Known limitations](#known-limitations) for what hasn't been tested on real
+hardware.
 
 ## License
 

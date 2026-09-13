@@ -3,9 +3,21 @@
 All notable changes to QRes GUI. Versions before 1.0 are marked as
 pre-releases on GitHub.
 
-## Unreleased
+## 0.10.0 — 2026-09-13
 
-Prepared for 1.0:
+### Added
+- An **AI disclosure**: QRes GUI was written by Claude (Anthropic's AI
+  assistant), directed and tested by the maintainer. Noted in the README and
+  in **Settings › About**.
+
+### Changed
+- QA pass: a switch that fails now never stops the game from starting
+  (any error while switching is caught, reported, and the game launches at the
+  current resolution). Process tracking ignores a game's parent id once
+  Windows has reused it for an unrelated process. Linting (ruff) added and
+  clean.
+
+### Prepared for 1.0
 - From 1.0, releases are published as normal GitHub releases instead of
   pre-releases, and the update check offers people on a finished version only
   finished versions.

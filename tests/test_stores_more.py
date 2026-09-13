@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from qres_gui import config, launcher, notify, playnite
+from qres_gui import launcher, notify, playnite
 from qres_gui.stores import Game, battlenet, ea, playnite_games, xbox
 
 NEW_MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
