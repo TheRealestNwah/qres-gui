@@ -137,6 +137,17 @@ def refresh_rates(width: int, height: int, modes: list[Mode] | None = None) -> l
     return sorted({m.refresh for m in modes if (m.width, m.height) == (width, height)}, reverse=True)
 
 
+def available_sizes(modes: list[Mode] | None = None) -> list[tuple[int, int]]:
+    """(width, height) pairs Windows currently offers for the primary display, largest first."""
+    modes = list_modes() if modes is None else modes
+    return list(dict.fromkeys((m.width, m.height) for m in modes))
+
+
+def is_size_available(width: int, height: int, modes: list[Mode] | None = None) -> bool:
+    """Whether Windows offers this resolution. A custom resolution not yet created won't switch."""
+    return (width, height) in available_sizes(modes)
+
+
 def resolve(width: int, height: int, refresh: int, desktop: Mode) -> Mode:
     """Pick the concrete mode for a profile. refresh=0 means "same as desktop"."""
     rates = refresh_rates(width, height)

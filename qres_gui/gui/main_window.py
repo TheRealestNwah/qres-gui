@@ -21,6 +21,7 @@ from . import theme
 from .detail_panel import DetailPanel
 from .dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
 from .guide import GettingStarted
+from .presets import ApplyResolutionDialog, PresetsDialog, preset_label, preset_name
 
 ICON_SIZE = QSize(92, 43)
 ROLE_ID = Qt.ItemDataRole.UserRole
@@ -50,6 +51,7 @@ class MainWindow(QMainWindow):
 
         self._init_defaults()
         self._build_ui()
+        self._refresh_presets()
         self.rescan()
         self._poll_state()
         self._poll = QTimer(self, interval=2500, timeout=self._poll_state)
@@ -157,11 +159,83 @@ class MainWindow(QMainWindow):
         cl.setContentsMargins(0, 0, 0, 0)
         cl.setSpacing(0)
         cl.addWidget(top)
+        cl.addWidget(self._build_quickswitch_bar())
         cl.addWidget(self._build_update_bar())
         cl.addWidget(self._build_event_bar())
         cl.addWidget(body, 1)
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
+
+    # --- quick resolution switching ------------------------------------------
+
+    def _build_quickswitch_bar(self) -> QFrame:
+        bar = QFrame(objectName="quickBar")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(18, 6, 18, 6)
+        row.setSpacing(6)
+        row.addWidget(QLabel("Quick switch", objectName="caption"))
+        self._preset_row = QHBoxLayout()
+        self._preset_row.setSpacing(6)
+        row.addLayout(self._preset_row)
+        self._no_presets = QLabel("no presets yet", objectName="muted")
+        row.addWidget(self._no_presets)
+        row.addStretch()
+        row.addWidget(QPushButton("Manage presets…", clicked=self.open_presets))
+        return bar
+
+    def _refresh_presets(self) -> None:
+        while self._preset_row.count():
+            self._preset_row.takeAt(0).widget().deleteLater()
+        self._preset_chips = []
+        presets = self.cfg.get("presets", [])
+        self._no_presets.setVisible(not presets)
+        for preset in presets:
+            chip = QPushButton(preset_name(preset))
+            tip = f"Switch the primary display to {preset_label(preset)}"
+            if not display.is_size_available(preset["width"], preset["height"], self.modes):
+                tip += " — needs a custom resolution first"
+            chip.setToolTip(tip)
+            chip.clicked.connect(lambda _c=False, p=preset: self.apply_preset(p))
+            self._preset_row.addWidget(chip)
+            self._preset_chips.append((chip, preset))
+        self._update_preset_highlight()
+
+    def _update_preset_highlight(self) -> None:
+        """Mark the chip whose resolution matches the display now, without rebuilding."""
+        try:
+            current = display.current_mode()
+        except display.DisplayError:
+            return
+        for chip, preset in getattr(self, "_preset_chips", []):
+            active = (current.width, current.height) == (preset["width"], preset["height"])
+            name = "presetActive" if active else "preset"
+            if chip.objectName() != name:
+                chip.setObjectName(name)
+                chip.style().unpolish(chip)
+                chip.style().polish(chip)
+
+    def apply_preset(self, preset: dict) -> None:
+        try:
+            desktop = display.current_mode()
+        except display.DisplayError:
+            return
+        target = display.resolve(int(preset["width"]), int(preset["height"]),
+                                 int(preset.get("refresh") or 0), desktop)
+        self.apply_resolution(target)
+
+    def apply_resolution(self, target: display.Mode) -> None:
+        ApplyResolutionDialog(self, target, display.find_qres(self.cfg.get("qres_path")),
+                              bool(self.cfg.get("temporary", True))).exec()
+        self._refresh_presets()
+        self._poll_state()
+
+    def open_presets(self) -> None:
+        PresetsDialog(self).exec()
+        self._refresh_presets()
+
+    def save_presets(self) -> None:
+        self._save_now()
+        self._refresh_presets()
 
     # --- updates -------------------------------------------------------------
 
@@ -761,6 +835,7 @@ class MainWindow(QMainWindow):
         except display.DisplayError:
             return
         self.desktop_label.setText(str(current))
+        self._update_preset_highlight()
         desktop = self.cfg.get("desktop_mode")
         self.restore_btn.setEnabled(bool(desktop) and display.Mode.from_dict(desktop) != current)
 

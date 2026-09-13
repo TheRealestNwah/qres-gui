@@ -30,6 +30,7 @@ DEFAULTS: dict = {
     "update_available": None, # {"version", "url"} from the last check, until installed or dismissed
     "update_dismissed": "",   # version the user said "Later" to
     "first_run_done": False,  # the Getting started guide has been shown
+    "presets": [],            # quick-switch resolutions: [{"name", "width", "height", "refresh"}]
     "games": {},
 }
 

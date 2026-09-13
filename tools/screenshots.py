@@ -36,6 +36,7 @@ display.list_modes = lambda: list(MODES)
 display.current_mode = lambda: MODES[0]
 display.find_qres = lambda *a: r"C:\Tools\QRes\QRes.exe"
 display.monitor_count = lambda: 1
+display.set_mode = lambda *a, **k: "stub"  # screenshots must never change the real resolution
 updates.check = lambda current=None: None
 paths.launcher_command = lambda: list(LAUNCHER)
 shortcuts.desktop_dir = lambda: work / "Desktop"
@@ -83,6 +84,10 @@ theme.apply(app)
 OUT.mkdir(parents=True, exist_ok=True)
 
 win = main_window.MainWindow()
+win.cfg["presets"] = [{"name": "1440p", "width": 2560, "height": 1440, "refresh": 0},
+                      {"name": "Cinema", "width": 2560, "height": 1080, "refresh": 0},
+                      {"name": "", "width": 1920, "height": 1080, "refresh": 120}]
+win._refresh_presets()
 for gid, width, height in (("steam:101", 2560, 1440), ("steam:103", 2560, 1080), ("gog:201", 2560, 1440),
                            ("legendary:Rift", 1920, 1080)):
     entry = win.entry_for(win.games[gid], create=True)
@@ -103,6 +108,13 @@ for name, dialog in (("playnite", PlayniteDialog(win)), ("settings", SettingsDia
     app.processEvents()
     dialog.grab().save(str(OUT / f"{name}.png"))
     dialog.close()
+
+from qres_gui.gui.presets import PresetsDialog  # noqa: E402
+pd = PresetsDialog(win)
+pd.show()
+app.processEvents()
+pd.grab().save(str(OUT / "presets.png"))
+pd.close()
 
 from qres_gui.gui.guide import GettingStarted  # noqa: E402
 guide = GettingStarted(win)

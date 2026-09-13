@@ -34,6 +34,8 @@ the Windows display API directly.
 
 ![The Getting started guide](docs/screenshots/guide-1.png)
 
+![Resolution presets](docs/screenshots/presets.png)
+
 ![Settings](docs/screenshots/settings.png)
 
 ![Playnite integration](docs/screenshots/playnite.png)
@@ -88,6 +90,19 @@ If Playnite closes mid-game, the guard switches back.
 
 A Steam game that also has QRes launch options switches only once when started
 from Playnite, and still switches when started from Steam directly.
+
+### Quick resolution switching
+
+The **Quick switch** strip under the top bar changes your primary display's
+resolution right away — no game needed. Save presets (**Manage presets…**) and
+each becomes a one-click chip. Applying one asks *Keep this resolution?* and
+reverts on its own after 15 seconds if you don't confirm, so a black or
+unsupported screen fixes itself.
+
+A preset only works if Windows offers that resolution. For a size that isn't in
+the list, create it as a **custom resolution** in your graphics control panel
+(NVIDIA, AMD or Intel) first; QRes GUI flags presets that aren't available yet
+and explains this if a switch fails.
 
 ### Safety nets
 

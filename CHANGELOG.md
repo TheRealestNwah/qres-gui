@@ -3,6 +3,17 @@
 All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub.
 
+## 1.1.0 — 2026-09-13
+
+### Added
+- **Quick resolution switching.** A Quick switch strip under the top bar
+  changes the primary display's resolution on the spot, with saveable
+  one-click presets (Manage presets…). Applying one asks whether to keep it
+  and reverts after 15 seconds if you don't, so a bad mode can't strand you.
+  Presets for a resolution Windows doesn't currently offer are flagged, with a
+  note to create it as a custom resolution in your graphics control panel
+  first.
+
 ## 1.0.0 — 2026-09-13
 
 First stable release. Everything from the 0.x pre-releases: per-game

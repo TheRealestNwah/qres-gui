@@ -59,6 +59,7 @@ def env(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(display, "current_mode", lambda: DESKTOP)
     monkeypatch.setattr(display, "find_qres", lambda *a: r"C:\Tools\QRes.exe")
     monkeypatch.setattr(display, "monitor_count", lambda: 1)
+    monkeypatch.setattr(display, "set_mode", lambda *a, **k: "stub")  # never change the real resolution
     monkeypatch.setattr(updates, "check", lambda current=None: None)  # never reach GitHub from tests
     desktop, menu = tmp_path / "Desktop", tmp_path / "Programs" / "QRes GUI"
     desktop.mkdir()
@@ -362,6 +363,73 @@ def test_guide_adds_qres_to_playnite(win, env, monkeypatch):
     guide.playnite_btn.click()
     assert playnite.state(paths.launcher_command()) == "installed"
     assert guide.playnite_btn.isHidden() and "already in Playnite" in guide.playnite_status.text()
+
+
+# --- quick switch / presets -----------------------------------------------------------
+
+def test_preset_chips_appear_and_apply(win, monkeypatch):
+    assert not win._no_presets.isHidden() and len(win._preset_chips) == 0
+    win.cfg["presets"] = [{"name": "1440p", "width": 2560, "height": 1440, "refresh": 0},
+                          {"name": "", "width": 1920, "height": 1080, "refresh": 120}]
+    win._refresh_presets()
+    assert win._no_presets.isHidden()
+    labels = [chip.text() for chip, _ in win._preset_chips]
+    assert labels == ["1440p", "1920 × 1080 @ 120 Hz"]
+
+    applied = []
+    monkeypatch.setattr(main_window, "ApplyResolutionDialog",
+                        lambda *a, **k: type("D", (), {"exec": lambda self: applied.append(a[1]) or 0})())
+    win._preset_chips[0][0].click()
+    assert applied == [display.Mode(2560, 1440, 165)]  # refresh 0 resolved to the desktop's 165
+
+
+def test_presets_dialog_add_edit_remove_persist(win, monkeypatch):
+    from qres_gui.gui.presets import PresetEditor, PresetsDialog
+    dialog = PresetsDialog(win)
+    monkeypatch.setattr(PresetEditor, "exec", lambda self: 1)
+    monkeypatch.setattr(PresetEditor, "preset",
+                        lambda self: {"name": "Tall", "width": 2560, "height": 1080, "refresh": 60})
+    dialog._add()
+    assert config.load()["presets"] == [{"name": "Tall", "width": 2560, "height": 1080, "refresh": 60}]
+    assert dialog.list.count() == 1
+
+    dialog._add_current()  # adds 3440x1440 (the fake desktop)
+    assert dialog.list.count() == 2 and config.load()["presets"][1]["width"] == 3440
+    dialog.list.setCurrentRow(1)
+    dialog._move(-1)
+    assert [p["width"] for p in config.load()["presets"]] == [3440, 2560]
+    dialog._remove()
+    assert [p["width"] for p in config.load()["presets"]] == [2560]
+
+
+def test_preset_editor_warns_about_custom_resolutions(win):
+    from qres_gui.gui.presets import PresetEditor
+    editor = PresetEditor(win, win.modes)
+    editor.width.setValue(2560)
+    editor.height.setValue(1440)
+    assert "offers this resolution" in editor.status.text()
+    editor.width.setValue(5120)  # not in the fake mode list
+    editor.height.setValue(2160)
+    assert "custom resolution" in editor.status.text()
+
+
+def test_apply_resolution_dialog_reverts_when_not_kept(win, monkeypatch):
+    from qres_gui.gui import presets
+    calls = []
+    monkeypatch.setattr(display, "set_mode", lambda mode, *a: calls.append(mode) or "stub")
+    monkeypatch.setattr(display, "current_mode", lambda: display.Mode(3440, 1440, 165))
+    dialog = presets.ApplyResolutionDialog(win, display.Mode(2560, 1440, 165), None, True)
+    dialog._switch()
+    assert calls == [display.Mode(2560, 1440, 165)] and dialog.switched
+    dialog.done(0)  # closed without keeping
+    assert calls[-1] == display.Mode(3440, 1440, 165)  # reverted
+
+    calls.clear()
+    dialog2 = presets.ApplyResolutionDialog(win, display.Mode(2560, 1440, 165), None, True)
+    dialog2._switch()
+    dialog2._keep()  # accept + keep
+    dialog2.done(dialog2.result())
+    assert calls == [display.Mode(2560, 1440, 165)]  # switched, not reverted
 
 
 def test_settings_opens_the_guide(win):

@@ -33,6 +33,12 @@ QWidget {{ font-size: 13px; }}
 QFrame#topBar {{ background: #16181b; border-bottom: 1px solid #2a2d33; }}
 QFrame#eventBar {{ background: #2a2518; border-bottom: 1px solid #4a3f22; }}
 QFrame#updateBar {{ background: #1b2638; border-bottom: 1px solid #2c3f60; }}
+QFrame#quickBar {{ background: #191b1f; border-bottom: 1px solid #2a2d33; }}
+QPushButton#preset {{ padding: 3px 12px; border-radius: 12px; }}
+QPushButton#presetActive {{
+    padding: 3px 12px; border-radius: 12px; background: {ACCENT}; border-color: {ACCENT}; color: white; font-weight: 600;
+}}
+QPushButton#presetActive:hover {{ background: #6f9cf2; }}
 QLabel#muted {{ color: {MUTED}; }}
 QLabel#caption {{ color: {MUTED}; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }}
 QLabel#desktopMode {{ font-size: 17px; font-weight: 600; }}

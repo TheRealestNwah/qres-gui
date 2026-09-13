@@ -98,6 +98,16 @@ check simply tries again another day. `QResLauncher.exe check-update` writes
 the same result to the log. Updating means downloading the new zip from the
 release page and running `install.cmd`; your settings and hooks are kept.
 
+## A preset or quick switch doesn't work
+
+QRes can only switch to a resolution Windows already offers. If a preset is
+flagged "needs a custom resolution", or a switch fails saying Windows isn't
+offering that size, create it first as a **custom resolution** in your graphics
+control panel (NVIDIA Control Panel, AMD Software, or Intel Graphics Command
+Center), then try again. Applying a resolution always asks *Keep this
+resolution?* and reverts after 15 seconds on its own, so a bad choice can't
+leave you stuck.
+
 ## QRes.exe isn't found
 
 Point **Settings › QRes.exe** at it, or copy `QRes.exe` into the install
