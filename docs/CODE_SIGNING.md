@@ -1,5 +1,8 @@
 # Code signing and SmartScreen
 
+**Current decision: releases are unsigned.** This page keeps the options for
+later.
+
 QRes GUI's executables aren't signed, so Windows SmartScreen shows "Windows
 protected your PC" to people who run a fresh download. Signing is what makes
 that go away over time. Options, cheapest first:

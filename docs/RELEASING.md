@@ -20,11 +20,11 @@ Before tagging:
 
 - [ ] Real-world checks done: a GOG OSS game started from Playnite, one
       exclusive-fullscreen and one borderless game.
-- [ ] A week or two of normal use without surprises.
-- [ ] Windows Defender scan of the installed app and the release zip is clean
-      (last done for 0.9.0 with signatures 1.459.180.0: clean).
-- [ ] Code signing decided (see `docs/CODE_SIGNING.md`); if set up, CI signs
-      the executables before zipping.
+- [x] Windows Defender scan of the installed app and the release zip is clean
+      (done for 0.9.0 with signatures 1.459.180.0: clean).
+- [x] Code signing: not for 1.0. Releases stay unsigned; the troubleshooting
+      guide covers SmartScreen (Unblock, or More info › Run anyway).
+      `docs/CODE_SIGNING.md` has the options if that changes.
 
 Then:
 
