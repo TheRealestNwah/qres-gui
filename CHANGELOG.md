@@ -1,7 +1,14 @@
 # Changelog
 
-All notable changes to QRes GUI. Versions are marked as pre-releases on
-GitHub until 1.0.
+All notable changes to QRes GUI. Versions before 1.0 are marked as
+pre-releases on GitHub.
+
+## Unreleased
+
+Prepared for 1.0:
+- From 1.0, releases are published as normal GitHub releases instead of
+  pre-releases, and the update check offers people on a finished version only
+  finished versions.
 
 ## 0.9.0 — 2026-09-12
 

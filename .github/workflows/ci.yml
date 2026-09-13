@@ -2,7 +2,7 @@ name: CI
 
 # Every push and pull request: run the tests and build the release zip on a
 # clean Windows machine. Pushing a v* tag also publishes that zip as a GitHub
-# pre-release, with notes from CHANGELOG.md.
+# release (a pre-release for 0.x versions), with notes from CHANGELOG.md.
 on:
   push:
     branches: [main]
@@ -60,7 +60,7 @@ jobs:
           $version = (Select-String -Path qres_gui/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
           if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} doesn't match version $version" }
 
-      - name: Publish pre-release
+      - name: Publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,4 +68,6 @@ jobs:
           $version = "${{ github.ref_name }}".TrimStart("v")
           ./tools/release-notes.ps1 -Version $version | Set-Content notes.md -Encoding utf8
           $zip = (Get-ChildItem release/*.zip).FullName
-          gh release create "${{ github.ref_name }}" $zip --prerelease --verify-tag --title "QRes GUI $version" --notes-file notes.md
+          # 0.x versions are pre-releases; from 1.0 on, releases are full ("latest") releases.
+          $kind = if ([version]$version -lt [version]"1.0.0") { "--prerelease" } else { "--latest" }
+          gh release create "${{ github.ref_name }}" $zip $kind --verify-tag --title "QRes GUI $version" --notes-file notes.md

@@ -180,10 +180,9 @@ py -3.13 -m venv .venv
 The version lives in `qres_gui/__init__.py` (mirrored in `pyproject.toml`).
 
 **Releases are built by CI.** GitHub Actions (`.github/workflows/ci.yml`) runs the
-tests and builds the zip on every push. To release: add the version's section to
-`CHANGELOG.md`, bump the version, push, then push a `v<version>` tag. CI checks
-the tag matches the version and publishes the pre-release with notes from the
-changelog. `tools/screenshots.py` regenerates the README screenshots from a
+tests and builds the zip on every push, and publishes a release when a
+`v<version>` tag is pushed. Steps and the 1.0 checklist: [docs/RELEASING.md](docs/RELEASING.md);
+signing options: [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md). `tools/screenshots.py` regenerates the README screenshots from a
 made-up demo library.
 
 Run from source, the GUI writes launch options that call

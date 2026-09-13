@@ -30,10 +30,18 @@ def is_newer(version: str, than: str) -> bool:
 
 
 def newest(releases: list[dict], current: str) -> dict | None:
-    """The highest published release above `current`: {"version", "url", "name"}, or None."""
+    """The highest published release above `current`: {"version", "url", "name"}, or None.
+
+    Before 1.0 every release is a GitHub pre-release, so all count. From 1.0 on,
+    pre-releases are left out: someone on a finished version is only offered
+    finished versions.
+    """
     best, best_version = None, parse_version(current) or (0, 0, 0)
+    stable_only = best_version >= (1, 0, 0)
     for release in releases:
         if not isinstance(release, dict) or release.get("draft"):
+            continue
+        if stable_only and release.get("prerelease"):
             continue
         version = parse_version(release.get("tag_name", ""))
         if version and version > best_version:

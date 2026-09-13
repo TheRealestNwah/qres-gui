@@ -106,7 +106,12 @@ folder. Without QRes, switching falls back to Windows' own display API.
 ## Windows or antivirus warns about the download
 
 The programs aren't code-signed yet, so SmartScreen may say "Windows protected
-your PC": choose **More info › Run anyway**. The launcher starts its
+your PC": choose **More info › Run anyway**.
+
+To avoid the warnings altogether, unblock the download before extracting it:
+right-click the zip › **Properties** › tick **Unblock** › **OK**. Windows then
+stops treating the extracted files as "from the internet". (In PowerShell:
+`Unblock-File .\QResGUI-<version>-win64.zip`.) The launcher starts its
 safety-net process through Windows' WMI service, which some antivirus tools
 look at closely. The source is at <https://github.com/TheRealestNwah/qres-gui>
 if you'd like to check or build it yourself.

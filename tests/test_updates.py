@@ -29,6 +29,16 @@ def test_newest(current, expected):
         assert found["url"] == "https://example/v0.10.0"
 
 
+def test_from_1_0_only_finished_releases_are_offered():
+    releases = [
+        {"tag_name": "v1.1.0", "prerelease": True, "html_url": "pre"},
+        {"tag_name": "v1.0.1", "prerelease": False, "html_url": "stable"},
+    ]
+    assert updates.newest(releases, "1.0.0")["version"] == "1.0.1"
+    assert updates.newest(releases, "1.0.1") is None
+    assert updates.newest(releases, "0.9.0")["version"] == "1.1.0"  # pre-1.0: every release counts
+
+
 def test_is_newer():
     assert updates.is_newer("0.10.0", "0.9.9") and not updates.is_newer("0.8.0", "0.8.0")
     assert not updates.is_newer("", "0.8.0") and not updates.is_newer("0.9.0", "dev")
