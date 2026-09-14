@@ -3,6 +3,13 @@
 CI (`.github/workflows/ci.yml`) builds and publishes releases; nothing is
 uploaded from a local machine.
 
+## Branches
+
+`main` holds the latest released version, so it matches what people can
+download. Work in progress lands on `dev`, and a release is cut by tagging
+`dev` once it's ready; `main` is then fast-forwarded to that tag. Both
+branches run CI on every push.
+
 ## Any release
 
 1. Add a `## <version> — <date>` section to `CHANGELOG.md` (CI turns it into
@@ -13,12 +20,13 @@ uploaded from a local machine.
    `x.y.z` — `updates.parse_version` only understands that shape, so an
    `-rc` suffix would make the update check read the running version as
    `0.0.0` and offer the *previous* release as an upgrade.
-4. Commit and push `main`; wait for CI to pass.
-5. `git tag v<version>` and `git push origin v<version>`. CI checks the tag
+4. Commit and push `dev`; wait for CI to pass.
+5. `git tag v<version> dev` and `git push origin v<version>`. CI checks the tag
    matches the version, builds the zip, and publishes the release: a
    pre-release if `__prerelease__` is `True` or the version is 0.x, a normal
    ("latest") release otherwise.
-6. Optionally add a "Superseded by …" line to the previous release's notes.
+6. Fast-forward `main` to the tag, so it keeps matching the latest release.
+7. Optionally add a "Superseded by …" line to the previous release's notes.
 
 A pre-release is never offered by the in-app update check to anyone on 1.0 or
 later (`updates.newest`), so it reaches only people who go to the releases

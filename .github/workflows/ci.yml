@@ -1,11 +1,12 @@
 name: CI
 
 # Every push and pull request: run the tests and build the release zip on a
-# clean Windows machine. Pushing a v* tag also publishes that zip as a GitHub
-# release (a pre-release for 0.x versions), with notes from CHANGELOG.md.
+# clean Windows machine. main holds the latest released version and dev the
+# work in progress, so both are tested. Pushing a v* tag also publishes that
+# zip as a GitHub release, with notes from CHANGELOG.md.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     tags: ["v*"]
   pull_request:
 
