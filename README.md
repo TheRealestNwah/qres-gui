@@ -206,6 +206,17 @@ game has focus, Windows holds notifications in the notification centre
 instead of popping them up, so QRes GUI also shows the latest one in a banner
 until you dismiss it. **Settings › Send test notification** checks they work.
 
+### Diagnostics
+
+**Settings › Diagnostics…** shows what QRes GUI can see: its version and where
+it keeps its settings and log, the Windows build, which QRes.exe it found, every
+connected display with the mode it's running, whether HDR is available on each —
+and the reason in Windows' own words when it isn't — any switch being tracked
+right now and what it will restore, the Playnite and notification state, and the
+last update check. Anything that went wrong is highlighted, and **Copy for a bug
+report** puts it all on the clipboard as plain text. Nothing is sent anywhere,
+and opening it never starts an update check.
+
 ### Updates
 
 At most once a day, QRes GUI asks GitHub for this project's release list. If

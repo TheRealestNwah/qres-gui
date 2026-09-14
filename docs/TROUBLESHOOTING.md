@@ -1,9 +1,14 @@
 # Troubleshooting
 
-Start with the log: **Settings › Open log folder**, then open `launcher.log`
+Start with **Settings › Diagnostics…**: it shows what QRes GUI can actually see
+— which QRes.exe it found, every display and the mode it's running, whether HDR
+is available on each and why not when it isn't, and any switch being tracked
+right now. **Copy for a bug report** puts the lot on the clipboard.
+
+Then the log: **Settings › Open log folder**, then open `launcher.log`
 (`%APPDATA%\QResGUI\launcher.log`). Every launch writes what it switched,
 which processes it followed and when it switched back. When reporting a
-problem, include the lines from that launch.
+problem, include the diagnostics and the lines from that launch.
 
 ## The screen is stuck at the game's resolution
 
@@ -110,6 +115,10 @@ leave you stuck.
 
 ## The wrong screen switched, or nothing switched
 
+**Settings › Diagnostics…** lists every display Windows reports, which one is
+primary, and the mode each is running — start there if you aren't sure which
+screen is which.
+
 Check the **Display** row at the top of the game's Display box. *Primary
 display* — the default — follows whichever monitor Windows currently calls
 primary, so moving cables around can move which screen a game switches. Name
@@ -127,6 +136,9 @@ whatever a game's profile says.
 QRes GUI only offers HDR where Windows says it's available on the display the
 profile names — the primary one unless you picked another. The greyed-out
 control says which of these it is:
+
+**Settings › Diagnostics…** lists every display with its HDR state and the same
+reason, which is quicker than checking one profile at a time.
 
 - *This version of Windows doesn't have the HDR display setting* — it needs
   Windows 10 1709 or newer.
