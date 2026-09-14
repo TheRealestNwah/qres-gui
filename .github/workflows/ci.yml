@@ -68,6 +68,9 @@ jobs:
           $version = "${{ github.ref_name }}".TrimStart("v")
           ./tools/release-notes.ps1 -Version $version | Set-Content notes.md -Encoding utf8
           $zip = (Get-ChildItem release/*.zip).FullName
-          # 0.x versions are pre-releases; from 1.0 on, releases are full ("latest") releases.
-          $kind = if ([version]$version -lt [version]"1.0.0") { "--prerelease" } else { "--latest" }
+          # A pre-release if the source marks this version unfinished, or it's
+          # a 0.x version; otherwise a full ("latest") release.
+          $flag = Select-String -Path qres_gui/__init__.py -Pattern '__prerelease__ = (\w+)' | Select-Object -First 1
+          $unfinished = [bool]$flag -and $flag.Matches[0].Groups[1].Value -eq "True"
+          $kind = if ($unfinished -or [version]$version -lt [version]"1.0.0") { "--prerelease" } else { "--latest" }
           gh release create "${{ github.ref_name }}" $zip $kind --verify-tag --title "QRes GUI $version" --notes-file notes.md
