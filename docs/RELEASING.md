@@ -6,9 +6,10 @@ uploaded from a local machine.
 ## Branches
 
 `main` holds the latest released version, so it matches what people can
-download. Work in progress lands on `dev`, and a release is cut by tagging
-`dev` once it's ready; `main` is then fast-forwarded to that tag. Both
-branches run CI on every push.
+download. Work in progress lands on a branch named for its feature and
+reaches `main` through a pull request; a release is cut by tagging `main`
+once the release's work has merged. CI runs on every push to `main` and on
+every pull request, so a feature branch is tested the whole way in.
 
 ## Any release
 
@@ -20,13 +21,12 @@ branches run CI on every push.
    `x.y.z` — `updates.parse_version` only understands that shape, so an
    `-rc` suffix would make the update check read the running version as
    `0.0.0` and offer the *previous* release as an upgrade.
-4. Commit and push `dev`; wait for CI to pass.
-5. `git tag v<version> dev` and `git push origin v<version>`. CI checks the tag
+4. Merge the release's pull requests into `main`; wait for CI to pass there.
+5. `git tag v<version> main` and `git push origin v<version>`. CI checks the tag
    matches the version, builds the zip, and publishes the release: a
    pre-release if `__prerelease__` is `True` or the version is 0.x, a normal
    ("latest") release otherwise.
-6. Fast-forward `main` to the tag, so it keeps matching the latest release.
-7. Optionally add a "Superseded by …" line to the previous release's notes.
+6. Optionally add a "Superseded by …" line to the previous release's notes.
 
 ## Releasing without a local git
 
