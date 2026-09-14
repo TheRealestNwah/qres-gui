@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import __version__, config, display, hooks, notify, paths, playnite, session, shortcuts, updates
+from .. import (__version__, config, display, hdr, hooks, notify, paths, playnite, session, shortcuts,
+                updates)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
@@ -880,6 +881,10 @@ class MainWindow(QMainWindow):
                 return
         source = (active or {}).get("original") or self.cfg.get("desktop_mode")
         mode = display.Mode.from_dict(source)
+        # Put HDR back too. This is the button the launcher's own failure
+        # notifications send people to, so it has to undo everything a switch
+        # did, not just the resolution.
+        want_hdr = (active or {}).get("original_hdr")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             how = display.set_mode(mode, display.find_qres(self.cfg.get("qres_path")), self.cfg.get("temporary", True))
@@ -888,9 +893,19 @@ class MainWindow(QMainWindow):
             return
         finally:
             QApplication.restoreOverrideCursor()
+        hdr_note = ""
+        if want_hdr is not None:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                if hdr.set_enabled(bool(want_hdr)):
+                    hdr_note = f"  HDR turned back {'on' if want_hdr else 'off'}."
+            except Exception as exc:  # the resolution is already back; don't undo that over HDR
+                hdr_note = f"  HDR couldn't be put back: {exc}"
+            finally:
+                QApplication.restoreOverrideCursor()
         if active and not session.owner_alive(active):
             session.clear()
-        self.statusBar().showMessage(f"Switched to {mode} ({how}).", 6000)
+        self.statusBar().showMessage(f"Switched to {mode} ({how}).{hdr_note}", 8000)
         self._poll_state()
 
     def _ensure_qres(self) -> None:

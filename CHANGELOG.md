@@ -32,6 +32,12 @@ if you want to try it. Feedback on the HDR path is the point.
 - A game's **Resolution** box is now **Display**, covering resolution, refresh
   rate and HDR together.
 
+### Fixed
+- **Restore desktop resolution** now puts HDR back as well. It only switched
+  the resolution, which mattered because that button is where the launcher's
+  own failure notifications send you; every automatic path already restored
+  HDR.
+
 ## 1.2.0 — 2026-09-13
 
 ### Added

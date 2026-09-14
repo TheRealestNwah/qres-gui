@@ -10,7 +10,8 @@ os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qres_gui import __version__, config, display, hdr, notify, paths, playnite, shortcuts, updates
+from qres_gui import (__version__, config, display, hdr, notify, paths, playnite, session, shortcuts,
+                      updates)
 from qres_gui.gui import main_window, theme
 from qres_gui.gui.dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
 from qres_gui.stores import Game, steam
@@ -403,6 +404,53 @@ def test_guide_adds_qres_to_playnite(win, env, monkeypatch):
     guide.playnite_btn.click()
     assert playnite.state(paths.launcher_command()) == "installed"
     assert guide.playnite_btn.isHidden() and "already in Playnite" in guide.playnite_status.text()
+
+
+# --- restoring the desktop ------------------------------------------------------------
+
+def test_restore_desktop_puts_hdr_back_too(win, monkeypatch):
+    """The button the launcher's failure notifications point people at has to undo
+    everything a switch did, not just the resolution."""
+    switched, hdr_calls = [], []
+    monkeypatch.setattr(display, "set_mode", lambda mode, *a, **k: switched.append(mode) or "stub")
+    monkeypatch.setattr(hdr, "set_enabled", lambda on: hdr_calls.append(on) or True)
+    session.write(DESKTOP.to_dict(), "steam:10", original_hdr=False)
+    stale = {**session.read(), "create_time": 0.0}  # the launcher that made it is gone
+    paths.session_path().write_text(json.dumps(stale), encoding="utf-8")
+
+    win.restore_desktop()
+    assert switched == [DESKTOP]
+    assert hdr_calls == [False]
+    assert session.read() is None
+
+
+def test_restore_desktop_leaves_hdr_alone_when_the_record_says_nothing(win, monkeypatch):
+    switched, hdr_calls = [], []
+    monkeypatch.setattr(display, "set_mode", lambda mode, *a, **k: switched.append(mode) or "stub")
+    monkeypatch.setattr(hdr, "set_enabled", lambda on: hdr_calls.append(on) or True)
+    session.write(DESKTOP.to_dict(), "steam:10")
+    stale = {**session.read(), "create_time": 0.0}
+    paths.session_path().write_text(json.dumps(stale), encoding="utf-8")
+
+    win.restore_desktop()
+    assert switched == [DESKTOP] and hdr_calls == []
+
+
+def test_restore_desktop_still_restores_the_resolution_if_hdr_fails(win, monkeypatch):
+    switched = []
+    monkeypatch.setattr(display, "set_mode", lambda mode, *a, **k: switched.append(mode) or "stub")
+
+    def broken(on):
+        raise hdr.HdrError("the display said no")
+
+    monkeypatch.setattr(hdr, "set_enabled", broken)
+    session.write(DESKTOP.to_dict(), "steam:10", original_hdr=True)
+    stale = {**session.read(), "create_time": 0.0}
+    paths.session_path().write_text(json.dumps(stale), encoding="utf-8")
+
+    win.restore_desktop()
+    assert switched == [DESKTOP]                     # the resolution came back regardless
+    assert "HDR couldn't be put back" in win.statusBar().currentMessage()
 
 
 # --- quick switch / presets -----------------------------------------------------------
