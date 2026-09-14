@@ -4,6 +4,25 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
+## 1.4.0 — 2026-09-14
+
+Also a pre-release: it carries 1.3.0's HDR and multi-monitor code, which still
+hasn't run on real hardware, so it is no more proven than 1.3.0 is.
+
+### Added
+- **Diagnostics panel** (Settings › Help › **Diagnostics…**). One screen showing
+  what QRes GUI can actually see: its version and where it keeps its settings
+  and log, the Windows build, which QRes.exe it found, every connected display
+  with the mode it's running, whether HDR is available on each — and the reason
+  in Windows' own words when it isn't — any switch being tracked right now and
+  what it will restore, the Playnite and notification state, and the last update
+  check. Rows that went wrong are highlighted, and **Copy for a bug report** puts
+  the lot on the clipboard as plain text.
+
+  Most of [Troubleshooting](docs/TROUBLESHOOTING.md) opens by asking you to find
+  one of these out. Nothing is sent anywhere, and opening the panel never starts
+  an update check — it reads the last result from your settings instead.
+
 ## 1.3.0 — 2026-09-14
 
 **A pre-release.** Everything below is built against the Windows display APIs
