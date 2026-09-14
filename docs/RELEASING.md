@@ -11,6 +11,20 @@ reaches `main` through a pull request; a release is cut by tagging `main`
 once the release's work has merged. CI runs on every push to `main` and on
 every pull request, so a feature branch is tested the whole way in.
 
+One feature per branch is the default. When a feature depends on work that
+hasn't merged yet, branch off *that* branch rather than `main` and point its
+pull request at it too, so what's under review is only the new feature; GitHub
+moves it to `main` when the parent merges. Merge them in order, parent first,
+and merge the parent with a merge commit rather than a squash — a squash
+rewrites the parent's history into a commit the child doesn't share, which is
+what turns the follow-on merge into a conflict.
+
+What keeps a branch short-lived is being able to finish it, and some of this
+app can only be finished on hardware CI doesn't have: an HDR display, a second
+monitor, a particular store's launcher. A feature like that will sit unmerged
+and collect dependents, so it's worth knowing which kind you're starting before
+you start it.
+
 ## Any release
 
 1. Add a `## <version> — <date>` section to `CHANGELOG.md` (CI turns it into

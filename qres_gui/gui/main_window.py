@@ -239,8 +239,8 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(18, 6, 18, 6)
         row.setSpacing(6)
         quick = QLabel("Quick switch", objectName="caption")
-        quick.setToolTip("Presets and their hotkeys switch the primary display. To switch another "
-                         "screen, set it on a game's profile.")
+        quick.setToolTip("Presets and their hotkeys switch the display the preset names, or "
+                         "the primary one when it names none.")
         row.addWidget(quick)
         self._preset_row = QHBoxLayout()
         self._preset_row.setSpacing(6)
@@ -504,8 +504,8 @@ class MainWindow(QMainWindow):
     def modes_for(self, device: str | None) -> list[display.Mode]:
         """The modes one display offers, read once and kept.
 
-        `self.modes` stays the primary's: presets and quick switching are
-        primary-only, so they have no display to ask about.
+        `self.modes` stays the primary's, which is what a caller with no
+        display in hand - and a preset that names none - asks for.
         """
         if not device:
             return self.modes
