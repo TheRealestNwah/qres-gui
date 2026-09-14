@@ -3,6 +3,26 @@
 All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub.
 
+## 1.3.0 — 2026-09-14
+
+### Added
+- **Per-game HDR.** A game's profile can turn HDR on or off while it runs and
+  put it back when it exits — on for a game that wants it, off so an SDR game
+  doesn't look washed out. QRes can't switch HDR, so this goes through the
+  Windows display API (`DisplayConfig`, Windows 10 1709 and later) on the
+  primary display. Where HDR isn't available the control is greyed out and says
+  why, and a failed switch never stops a game from starting: the desktop's HDR
+  state is recorded alongside the resolution, so the guard, **Restore desktop
+  resolution** and `QResLauncher.exe restore` put it back too.
+- **Custom launch arguments** for store games QRes GUI starts itself (GOG, EA,
+  Amazon, standalone): an **Extra arguments** field, added after the store's own
+  arguments and kept when a rescan refreshes them. They apply to shortcuts QRes
+  made and to **Play**; Steam games keep using Steam's own launch options.
+
+### Changed
+- A game's **Resolution** box is now **Display**, covering resolution, refresh
+  rate and HDR together.
+
 ## 1.2.0 — 2026-09-13
 
 ### Added

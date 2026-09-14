@@ -5,9 +5,15 @@ by a store-qualified id such as "steam:620" or "gog:1453375253":
 
     {"name": ..., "store": ..., "enabled": true,
      "width": 2560, "height": 1440, "refresh": 0,      # 0 = match desktop
+     "hdr": true | false | null,                       # null = leave HDR alone
      "watch": ["Game.exe"],                            # optional process names
+     "extra_args": "-windowed",                        # added to the store's own arguments
      "launch": {"type": "exe", "path": ..., "args": ..., "cwd": ...}
                | {"type": "uri", "uri": ...} | null}
+
+"launch" is a copy of what the store reports and is refreshed on every rescan,
+so anything the user types goes in "extra_args" instead - except for manual
+games, which have no store to copy from and own "launch" outright.
 """
 
 from __future__ import annotations
@@ -51,6 +57,12 @@ def load() -> dict:
         return cfg
     cfg.update(data)
     return cfg
+
+
+def full_args(entry: dict) -> str:
+    """A game's command line: the store's own arguments, then the user's extras."""
+    parts = ((entry.get("launch") or {}).get("args") or "", entry.get("extra_args") or "")
+    return " ".join(part.strip() for part in parts if part.strip())
 
 
 def save(cfg: dict) -> None:

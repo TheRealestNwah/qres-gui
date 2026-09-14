@@ -13,13 +13,17 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from .. import display, paths, playnite, shortcuts
+from .. import config, display, hdr, paths, playnite, shortcuts
 from ..stores import Game, steam
 from . import theme
 from .dialogs import TestResolutionDialog
 
 DETACHED_PROCESS = 0x00000008
 BANNER_WIDTH = 460
+
+# "" means leave HDR alone; the launcher stores that as null.
+HDR_CHOICES = (("Leave as it is", ""), ("Turn on for this game", "on"), ("Turn off for this game", "off"))
+HDR_HINT = "Switched when the game starts and put back when it exits."
 
 
 def _row(*widgets, stretch_after: int | None = None) -> QHBoxLayout:
@@ -39,6 +43,15 @@ def _muted(text: str = "") -> QLabel:
     return label
 
 
+def _hdr_choice(value) -> str:
+    """A saved "hdr" setting (True / False / None) as its combo-box key."""
+    return "" if value is None else ("on" if value else "off")
+
+
+def _hdr_value(choice: str) -> bool | None:
+    return None if not choice else choice == "on"
+
+
 class DetailPanel(QScrollArea):
     def __init__(self, win):
         super().__init__()
@@ -53,7 +66,7 @@ class DetailPanel(QScrollArea):
         self.setWidget(container)
         outer = QVBoxLayout(container)
         outer.setContentsMargins(12, 0, 6, 0)
-        self.placeholder = QLabel("Select a game to set up its resolution.", objectName="muted",
+        self.placeholder = QLabel("Select a game to set up its display.", objectName="muted",
                                   alignment=Qt.AlignmentFlag.AlignCenter)
         self.content = QWidget()
         outer.addWidget(self.placeholder, 1)
@@ -81,10 +94,10 @@ class DetailPanel(QScrollArea):
         meta_row.addWidget(self.open_folder, alignment=Qt.AlignmentFlag.AlignTop)
         v.addLayout(meta_row)
 
-        # Resolution profile
-        box = QGroupBox("Resolution")
+        # Display profile
+        box = QGroupBox("Display")
         layout = QVBoxLayout(box)
-        self.enabled = QCheckBox("Switch resolution when this game launches")
+        self.enabled = QCheckBox("Change the display when this game launches")
         self.enabled.setStyleSheet("font-weight: 600;")
         self.enabled.toggled.connect(self._on_enabled)
         layout.addWidget(self.enabled)
@@ -93,9 +106,16 @@ class DetailPanel(QScrollArea):
         self.res_combo.currentIndexChanged.connect(self._on_resolution)
         self.rate_combo = QComboBox()
         self.rate_combo.currentIndexChanged.connect(self._on_rate)
+        self.hdr_combo = QComboBox()
+        for label, key in HDR_CHOICES:
+            self.hdr_combo.addItem(label, key)
+        self.hdr_combo.currentIndexChanged.connect(self._on_hdr)
         form.addRow("Resolution", self.res_combo)
         form.addRow("Refresh rate", self.rate_combo)
+        form.addRow("HDR", self.hdr_combo)
         layout.addLayout(form)
+        self.hdr_hint = _muted(HDR_HINT)
+        layout.addWidget(self.hdr_hint)
         self.quick = QCheckBox("Switch back the moment the game closes")
         self.quick.setToolTip("Skips the few seconds QRes normally waits after the game exits, which\n"
                               "catch games that restart themselves (e.g. after changing graphics settings).")
@@ -148,6 +168,16 @@ class DetailPanel(QScrollArea):
         mform.addRow("Executable", exe_row)
         mform.addRow("Arguments", self.manual_args)
         layout.addWidget(self.manual_form)
+        self.args_form = QWidget()
+        aform = QFormLayout(self.args_form)
+        aform.setContentsMargins(0, 0, 0, 0)
+        self.extra_args = QLineEdit(placeholderText="Optional, e.g. -windowed -skipintro")
+        self.extra_args.setToolTip("Added to the arguments the store already uses. They apply when QRes GUI\n"
+                                   "starts the game - from a shortcut it made, or from Play - and not when\n"
+                                   "the store or Playnite starts it, because then they build the command line.")
+        self.extra_args.editingFinished.connect(self._on_extra_args)
+        aform.addRow("Extra arguments", self.extra_args)
+        layout.addWidget(self.args_form)
         self.shortcut_status = QLabel(wordWrap=True)
         layout.addWidget(self.shortcut_status)
         self.desktop_btn = QPushButton("Create desktop shortcut", objectName="primary",
@@ -216,7 +246,9 @@ class DetailPanel(QScrollArea):
             self.primary_hint.setStyleSheet("")
             self.primary_hint.setText("QRes switches the primary display only.")
         self._fill_rates(entry["width"], entry["height"], entry.get("refresh", 0))
+        self._fill_hdr(entry.get("hdr"))
         self.watch.setText(", ".join(entry.get("watch", [])))
+        self.extra_args.setText(entry.get("extra_args", ""))
 
         is_steam, is_manual = game.store == "steam", game.store == "manual"
         self.steam_box.setVisible(is_steam)
@@ -268,6 +300,20 @@ class DetailPanel(QScrollArea):
         self.rate_combo.setCurrentIndex(max(self.rate_combo.findData(selected), 0))
         self.rate_combo.blockSignals(False)
 
+    def _fill_hdr(self, value) -> None:
+        """Show the saved choice, and say so if this display can't do HDR anyway."""
+        self.hdr_combo.blockSignals(True)
+        self.hdr_combo.setCurrentIndex(max(self.hdr_combo.findData(_hdr_choice(value)), 0))
+        self.hdr_combo.blockSignals(False)
+        state = hdr.status()
+        self.hdr_combo.setEnabled(state.supported)
+        if state.supported:
+            self.hdr_hint.setStyleSheet("")
+            self.hdr_hint.setText(HDR_HINT)
+        else:
+            # Only a warning if the profile is actually asking for HDR.
+            theme.set_state(self.hdr_hint, "warn" if value is not None else "off", state.reason)
+
     # --- profile edits -----------------------------------------------------
 
     def _changed(self) -> None:
@@ -302,6 +348,22 @@ class DetailPanel(QScrollArea):
             return
         self._entry()["refresh"] = int(self.rate_combo.currentData() or 0)
         self._changed()
+
+    def _on_hdr(self) -> None:
+        if self._loading or not self.game:
+            return
+        self._entry()["hdr"] = _hdr_value(self.hdr_combo.currentData())
+        self._changed()
+
+    def _on_extra_args(self) -> None:
+        if self._loading or not self.game:
+            return
+        entry = self._entry()
+        args = self.extra_args.text().strip()
+        if args != entry.get("extra_args", ""):
+            entry["extra_args"] = args
+            self.extra_args.setText(args)
+            self._changed()
 
     def _on_watch(self) -> None:
         if self._loading or not self.game:
@@ -439,8 +501,11 @@ class DetailPanel(QScrollArea):
 
     def _refresh_shortcuts(self, entry: dict, enabled: bool, watch_needed: bool) -> None:
         launch = entry.get("launch") or self.game.launch or {}
+        # Only games QRes starts itself can take extra arguments; a store URL
+        # hands off to the store, which decides the command line.
+        self.args_form.setVisible(launch.get("type") == "exe" and self.game.store != "manual")
         if launch.get("type") == "exe":
-            self.target_label.setText(f"Starts  {launch.get('path', '')}  {launch.get('args', '')}".rstrip())
+            self.target_label.setText(f"Starts  {launch.get('path', '')}  {config.full_args(entry)}".rstrip())
         elif launch.get("type") == "uri":
             self.target_label.setText(f"Starts through {self.game.store_label}  ({launch['uri']})")
         else:

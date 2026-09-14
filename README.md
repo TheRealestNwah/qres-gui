@@ -47,7 +47,7 @@ the Windows display API directly.
 `QResLauncher.exe` sits between the store and the game:
 
 1. It switches to the game's resolution, keeping the desktop's refresh rate
-   unless you pick another.
+   unless you pick another, and switches HDR if the game's profile asks for it.
 2. It starts the game and follows every process the game starts, including
    ones whose launcher has already exited.
 3. When they've all closed, it switches back.
@@ -90,6 +90,42 @@ If Playnite closes mid-game, the guard switches back.
 
 A Steam game that also has QRes launch options switches only once when started
 from Playnite, and still switches when started from Steam directly.
+
+### HDR
+
+A game's profile can also turn **HDR** on or off while it runs and put it back
+when it exits — on for a game that wants it, off so an SDR game doesn't come out
+washed out. QRes can't do this, so QRes GUI goes to the Windows display API
+(`DisplayConfig`, Windows 10 1709 and later) for the primary display.
+
+The control sits with the resolution in the game's **Display** box: *Leave as it
+is* (the default, nothing changes), *Turn on for this game*, *Turn off for this
+game*. If your display, driver or Windows build can't switch HDR, it's greyed
+out and says why.
+
+HDR never holds a game up. If the switch fails you get a notification and the
+game starts regardless. The desktop's HDR state goes into `session.json` beside
+the resolution, so the same safety nets below put it back — the guard,
+**Restore desktop resolution**, and `QResLauncher.exe restore`.
+
+Expect the display to go black for a second or two each way: switching HDR makes
+it re-sync.
+
+### Custom launch arguments
+
+For store games QRes GUI starts itself (GOG, EA, Amazon, standalone), the
+**Launching** box has an **Extra arguments** field — `-windowed`, `-skipintro`
+and the like. They go after whatever arguments the store already uses, and a
+rescan that refreshes the store's own launch details leaves them alone.
+
+They apply when **QRes GUI** starts the game: from a shortcut it created, or
+from **Play**. They don't apply when the store's own client or Playnite starts
+it — those build the command line themselves, so put the arguments there
+instead. Hand-added games have a full **Arguments** field of their own, since
+there's no store command line to add to.
+
+Steam is deliberately left out: put those in Steam's own *Launch options*, where
+they already sit next to the QRes hook.
 
 ### Quick resolution switching
 
@@ -159,8 +195,8 @@ now**, under **Settings › Updates**.
    existing hooks keep working.
 2. Open **QRes GUI**. The first time, a short **Getting started** guide finds
    QRes.exe, confirms your resolutions, adds QRes to Playnite if you use it, and
-   sets up a first game. Later: select a game, tick **Switch resolution when this game
-   launches** and pick the resolution. **Test for 10 seconds** tries the mode
+   sets up a first game. Later: select a game, tick **Change the display when this
+   game launches** and pick the resolution (and HDR, if you want it switched). **Test for 10 seconds** tries the mode
    and switches back on its own. **Switch back the moment the game closes**
    skips the few seconds normally allowed for games that restart themselves.
 3. Hook it up:
@@ -225,7 +261,13 @@ Layout:
 
 ## Known limitations
 
-- Only the primary display is switched (QRes's own behaviour).
+- Only the primary display is switched (QRes's own behaviour), HDR included.
+- HDR needs Windows 10 1709 or newer and a display Windows reports as
+  HDR-capable; where it isn't available the control says so and stays greyed
+  out. Switching it blanks the display briefly while it re-syncs.
+- **Extra arguments** only apply when QRes GUI starts the game (a shortcut it
+  made, or **Play**), not when the store's client or Playnite does. Steam games
+  use Steam's own launch options instead.
 - Games from any store work through Playnite: start one there once and it
   appears in QRes GUI, ready to set up.
 - Heroic, Amazon Games, standalone legendary / nile, EA app, Battle.net and
