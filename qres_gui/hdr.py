@@ -45,7 +45,7 @@ SETTLE = 2.0
 NO_API = "This version of Windows doesn't have the HDR display setting (Windows 10 1709 or newer)."
 NO_CONFIG = "Windows didn't report the display configuration."
 NO_DISPLAY = "That display isn't connected right now."
-NO_SUPPORT = "Your primary display doesn't report HDR support."
+NO_SUPPORT = "This display doesn't report HDR support."
 FORCED_OFF = "Windows has HDR switched off for this display; turn it on in Settings › System › Display › HDR."
 
 
