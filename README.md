@@ -104,6 +104,13 @@ the list, create it as a **custom resolution** in your graphics control panel
 (NVIDIA, AMD or Intel) first; QRes GUI flags presets that aren't available yet
 and explains this if a switch fails.
 
+**Tray icon and global hotkeys.** QRes GUI shows a system-tray icon (right-click
+for presets, restore and quit). Give any preset — or *Restore desktop
+resolution* — a system-wide hotkey (**Settings**, or a preset's editor) that
+works from anywhere, including inside a game. Hotkeys need a modifier, e.g.
+`Ctrl+Alt+1`. For them to work while the window is closed, turn on **keep
+running in the tray** in Settings.
+
 ### Safety nets
 
 - By default the switch is **temporary** (QRes `/D`). It's never written to
@@ -210,6 +217,7 @@ Layout:
 - `qres_gui/hooks.py`: finds and removes Steam launch options and game shortcuts
 - `qres_gui/notify.py`: toast notifications and the event record behind the GUI banner
 - `qres_gui/playnite.py`: Playnite script blocks, matching Playnite games to profiles
+- `qres_gui/gui/presets.py`, `tray.py`, `hotkeys.py`: quick switch, tray icon, global hotkeys
 - `qres_gui/vdf.py`: Valve KeyValues reader/writer (round-trips Steam's files byte for byte)
 - `qres_gui/stores/`: per-store detection; `steam.py` also edits launch options
 - `qres_gui/gui/`: PySide6 UI

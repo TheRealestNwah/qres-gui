@@ -432,6 +432,49 @@ def test_apply_resolution_dialog_reverts_when_not_kept(win, monkeypatch):
     assert calls == [display.Mode(2560, 1440, 165)]  # switched, not reverted
 
 
+def test_hotkeys_dispatch_to_presets_and_restore(win, monkeypatch):
+    win.cfg["presets"] = [{"name": "A", "width": 2560, "height": 1440, "refresh": 0}]
+    applied, restored = [], []
+    monkeypatch.setattr(win, "apply_preset", lambda p: applied.append(p))
+    monkeypatch.setattr(win, "restore_desktop", lambda: restored.append(True))
+    win._on_hotkey(win.HK_PRESET_BASE + 0)
+    win._on_hotkey(win.HK_RESTORE)
+    win._on_hotkey(win.HK_PRESET_BASE + 5)  # out of range: ignored
+    assert applied == [{"name": "A", "width": 2560, "height": 1440, "refresh": 0}] and restored == [True]
+
+
+def test_apply_hotkeys_reads_config(win, monkeypatch):
+    registered = {}
+    monkeypatch.setattr(win.hotkeys, "apply", lambda bindings: registered.update(bindings) or {})
+    win.cfg["restore_hotkey"] = "Ctrl+Alt+Home"
+    win.cfg["presets"] = [{"name": "A", "width": 2560, "height": 1440, "refresh": 0, "hotkey": "Ctrl+Alt+1"},
+                          {"name": "B", "width": 1920, "height": 1080, "refresh": 0, "hotkey": ""}]
+    win.apply_hotkeys()
+    assert registered == {win.HK_RESTORE: "Ctrl+Alt+Home", win.HK_PRESET_BASE: "Ctrl+Alt+1"}
+
+
+def test_close_to_tray_hides_when_background_on(win, monkeypatch):
+    from PySide6.QtGui import QCloseEvent
+    win.tray = type("T", (), {"showMessage": lambda *a, **k: None, "icon": lambda self: None,
+                              "hide": lambda self: None})()
+    win.cfg["background"] = True
+    win._told_tray = True
+    event = QCloseEvent()
+    win.closeEvent(event)
+    assert not event.isAccepted()  # ignored -> window hidden, app keeps running
+
+
+def test_settings_saves_tray_and_hotkey(win):
+    dialog = SettingsDialog(win, win.cfg, win.modes)
+    dialog.background.setChecked(True)
+    dialog.tray_icon.setChecked(False)
+    from PySide6.QtGui import QKeySequence
+    dialog.restore_hotkey.setKeySequence(QKeySequence("Ctrl+Alt+Home"))
+    dialog.apply_to(win.cfg)
+    assert win.cfg["background"] is True and win.cfg["tray_icon"] is False
+    assert win.cfg["restore_hotkey"] == "Ctrl+Alt+Home"
+
+
 def test_settings_opens_the_guide(win):
     opened = []
     dialog = SettingsDialog(win, win.cfg, win.modes, on_guide=lambda: opened.append(True))

@@ -21,7 +21,9 @@ from . import theme
 from .detail_panel import DetailPanel
 from .dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
 from .guide import GettingStarted
+from .hotkeys import HotkeyManager
 from .presets import ApplyResolutionDialog, PresetsDialog, preset_label, preset_name
+from .tray import Tray
 
 ICON_SIZE = QSize(92, 43)
 ROLE_ID = Qt.ItemDataRole.UserRole
@@ -48,6 +50,11 @@ class MainWindow(QMainWindow):
         self.playnite_state = "missing"
         self._icons: dict[str, QPixmap] = {}
         self._save_timer = QTimer(self, singleShot=True, interval=400, timeout=self._save_now)
+        self.tray = None            # set up after the first poll/rescan, at the end of __init__
+        self.hotkeys = None
+        self._quitting = False
+        self._told_tray = False
+        self._last_mode_str = ""
 
         self._init_defaults()
         self._build_ui()
@@ -64,6 +71,7 @@ class MainWindow(QMainWindow):
         self._update_found.connect(self._on_update_result)
         self._show_update_bar()                  # from an earlier check
         QTimer.singleShot(1500, self._auto_check_updates)
+        self._setup_tray_and_hotkeys()
 
     # --- setup -------------------------------------------------------------
 
@@ -166,6 +174,60 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
 
+    # --- tray icon and global hotkeys ----------------------------------------
+
+    HK_RESTORE = 1
+    HK_PRESET_BASE = 100
+
+    def _setup_tray_and_hotkeys(self) -> None:
+        if self.cfg.get("tray_icon", True) and Tray.available():
+            self.tray = Tray(self)
+            self.tray.show()
+        # RegisterHotKey needs a window handle; winId() creates it even while hidden.
+        self.hotkeys = HotkeyManager(int(self.winId()), self._on_hotkey)
+        QApplication.instance().installNativeEventFilter(self.hotkeys)
+        self.apply_hotkeys()
+
+    def apply_hotkeys(self) -> dict:
+        """(Re)register global hotkeys from the config; returns {id: sequence} that failed."""
+        bindings = {}
+        if self.cfg.get("restore_hotkey"):
+            bindings[self.HK_RESTORE] = self.cfg["restore_hotkey"]
+        for i, preset in enumerate(self.cfg.get("presets", [])):
+            if preset.get("hotkey"):
+                bindings[self.HK_PRESET_BASE + i] = preset["hotkey"]
+        self._hotkey_failed = self.hotkeys.apply(bindings)
+        return self._hotkey_failed
+
+    def _on_hotkey(self, hotkey_id: int) -> None:
+        if hotkey_id == self.HK_RESTORE:
+            self.restore_desktop()
+        else:
+            presets = self.cfg.get("presets", [])
+            index = hotkey_id - self.HK_PRESET_BASE
+            if 0 <= index < len(presets):
+                self.apply_preset(presets[index])
+
+    def refresh_tray(self, force: bool = False) -> None:
+        if not self.tray:
+            return
+        try:
+            mode = str(display.current_mode())
+        except display.DisplayError:
+            mode = ""
+        if force or mode != self._last_mode_str:
+            self._last_mode_str = mode
+            self.tray.rebuild()
+
+    def show_from_tray(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def quit_app(self) -> None:
+        self._quitting = True
+        self.close()
+
     # --- quick resolution switching ------------------------------------------
 
     def _build_quickswitch_bar(self) -> QFrame:
@@ -199,6 +261,9 @@ class MainWindow(QMainWindow):
             self._preset_row.addWidget(chip)
             self._preset_chips.append((chip, preset))
         self._update_preset_highlight()
+        if getattr(self, "hotkeys", None):  # presets carry hotkeys; tray lists presets
+            self.apply_hotkeys()
+            self.refresh_tray(force=True)
 
     def _update_preset_highlight(self) -> None:
         """Mark the chip whose resolution matches the display now, without rebuilding."""
@@ -442,7 +507,21 @@ class MainWindow(QMainWindow):
         if self._save_timer.isActive():
             self._save_timer.stop()
             self._save_now()
+        # Keep running in the tray if asked, unless we're really quitting.
+        if not self._quitting and self.tray and self.cfg.get("background"):
+            event.ignore()
+            self.hide()
+            if not self._told_tray:
+                self._told_tray = True
+                self.tray.showMessage("QRes GUI", "Still running in the tray — right-click for presets, "
+                                      "or Quit to exit.", self.tray.icon(), 5000)
+            return
+        if self.tray:
+            self.tray.hide()
+        if getattr(self, "hotkeys", None):
+            self.hotkeys.clear()
         super().closeEvent(event)
+        QApplication.instance().quit()
 
     # --- Steam helpers used by the detail panel ------------------------------
 
@@ -732,7 +811,24 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             dialog.apply_to(self.cfg)
             self._save_now()
+            self._sync_tray()
+            failed = self.apply_hotkeys()
+            if failed:
+                QMessageBox.warning(self, "Hotkeys",
+                                    "These shortcuts couldn't be registered (another program may already use "
+                                    "them):\n\n  " + "\n  ".join(sorted(failed.values())))
             self._poll_state()
+
+    def _sync_tray(self) -> None:
+        """Create or remove the tray icon to match the setting."""
+        want = self.cfg.get("tray_icon", True) and Tray.available()
+        if want and not self.tray:
+            self.tray = Tray(self)
+            self.tray.show()
+        elif not want and self.tray:
+            self.tray.hide()
+            self.tray.deleteLater()
+            self.tray = None
 
     def _needs_guide(self) -> bool:
         """A new install gets the guide once; anyone with games already set up is past it."""
@@ -836,6 +932,7 @@ class MainWindow(QMainWindow):
             return
         self.desktop_label.setText(str(current))
         self._update_preset_highlight()
+        self.refresh_tray()
         desktop = self.cfg.get("desktop_mode")
         self.restore_btn.setEnabled(bool(desktop) and display.Mode.from_dict(desktop) != current)
 

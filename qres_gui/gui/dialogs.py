@@ -4,10 +4,11 @@ import os
 import subprocess
 
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
+    QFormLayout, QHBoxLayout, QKeySequenceEdit, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
+    QVBoxLayout, QWidget,
 )
 
 from .. import __version__, display, notify, paths, playnite
@@ -98,6 +99,26 @@ class SettingsDialog(QDialog):
         form.addRow("", _hint("Keeps a crash or power cut from leaving Windows at the game's resolution after a reboot."))
         form.addRow("Wait after switching", self.switch_delay)
         form.addRow("Wait before switching back", self.restore_delay)
+
+        self.tray_icon = QCheckBox("Show a system-tray icon")
+        self.tray_icon.setChecked(bool(cfg.get("tray_icon", True)))
+        self.background = QCheckBox("Keep running in the tray when the window is closed")
+        self.background.setChecked(bool(cfg.get("background", False)))
+        self.restore_hotkey = QKeySequenceEdit()
+        self.restore_hotkey.setMaximumSequenceLength(1)
+        if cfg.get("restore_hotkey"):
+            self.restore_hotkey.setKeySequence(QKeySequence(cfg["restore_hotkey"]))
+        hotkey_row = QHBoxLayout()
+        hotkey_row.addWidget(self.restore_hotkey, 1)
+        hotkey_row.addWidget(QPushButton("Clear", clicked=self.restore_hotkey.clear))
+        form.addRow("Tray icon", _left(self.tray_icon))
+        form.addRow("", _left(self.background))
+        form.addRow("Restore hotkey", hotkey_row)
+        form.addRow("", _hint("A system-wide shortcut (needs a modifier, e.g. Ctrl+Alt+Home) that switches "
+                              "back to your desktop resolution from anywhere. Give presets their own hotkeys "
+                              "when you add them. Global hotkeys and the tray need QRes GUI to be running "
+                              "(turn on \"keep running in the tray\")."))
+
         form.addRow("Launcher", _browse_row(launcher, logs))
         # Hints go on their own rows under their buttons: beside a button, a
         # wrapped label doesn't get the height it needs and ends up cut off.
@@ -193,6 +214,9 @@ class SettingsDialog(QDialog):
         cfg["switch_delay"] = self.switch_delay.value()
         cfg["restore_delay"] = self.restore_delay.value()
         cfg["check_updates"] = self.check_updates.isChecked()
+        cfg["tray_icon"] = self.tray_icon.isChecked()
+        cfg["background"] = self.background.isChecked()
+        cfg["restore_hotkey"] = self.restore_hotkey.keySequence().toString()
 
 
 class PlayniteDialog(QDialog):

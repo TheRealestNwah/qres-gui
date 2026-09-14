@@ -30,7 +30,10 @@ DEFAULTS: dict = {
     "update_available": None, # {"version", "url"} from the last check, until installed or dismissed
     "update_dismissed": "",   # version the user said "Later" to
     "first_run_done": False,  # the Getting started guide has been shown
-    "presets": [],            # quick-switch resolutions: [{"name", "width", "height", "refresh"}]
+    "presets": [],            # quick-switch resolutions: [{"name", "width", "height", "refresh", "hotkey"}]
+    "tray_icon": True,        # show a system-tray icon
+    "background": False,      # keep running in the tray when the window is closed
+    "restore_hotkey": "",     # global hotkey for "Restore desktop resolution"
     "games": {},
 }
 

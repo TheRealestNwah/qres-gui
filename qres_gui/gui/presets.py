@@ -5,9 +5,10 @@ and manage saved presets. Presets are {"name", "width", "height", "refresh"}
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QPushButton, QSpinBox, QVBoxLayout,
+    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QKeySequenceEdit, QLabel,
+    QLineEdit, QListWidget, QListWidgetItem, QPushButton, QSpinBox, QVBoxLayout,
 )
 
 from .. import display
@@ -145,18 +146,26 @@ class PresetEditor(QDialog):
         self.height.setValue(int((preset or {}).get("height") or current.height))
         self.refresh = QComboBox()
         self.name.setText(str((preset or {}).get("name") or ""))
+        self.hotkey = QKeySequenceEdit()
+        self.hotkey.setMaximumSequenceLength(1)
+        if (preset or {}).get("hotkey"):
+            self.hotkey.setKeySequence(QKeySequence(preset["hotkey"]))
 
         size_row = QHBoxLayout()
         size_row.addWidget(self.width)
         size_row.addWidget(QLabel("×"))
         size_row.addWidget(self.height)
         size_row.addStretch()
+        hotkey_row = QHBoxLayout()
+        hotkey_row.addWidget(self.hotkey, 1)
+        hotkey_row.addWidget(QPushButton("Clear", clicked=self.hotkey.clear))
 
         self.status = QLabel(wordWrap=True)
         form = QFormLayout()
         form.addRow("Name", self.name)
         form.addRow("Resolution", size_row)
         form.addRow("Refresh rate", self.refresh)
+        form.addRow("Hotkey", hotkey_row)
         form.addRow("", self.status)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -190,7 +199,8 @@ class PresetEditor(QDialog):
 
     def preset(self) -> dict:
         return {"name": self.name.text().strip(), "width": self.width.value(), "height": self.height.value(),
-                "refresh": int(self.refresh.currentData() or 0)}
+                "refresh": int(self.refresh.currentData() or 0),
+                "hotkey": self.hotkey.keySequence().toString()}
 
 
 class PresetsDialog(QDialog):
@@ -239,6 +249,8 @@ class PresetsDialog(QDialog):
         for preset in self.presets:
             available = display.is_size_available(preset["width"], preset["height"], self.win.modes)
             text = f"{preset_name(preset)}    ·    {preset_label(preset)}"
+            if preset.get("hotkey"):
+                text += f"    ·    {preset['hotkey']}"
             if not available:
                 text += "    ·    needs a custom resolution"
             item = QListWidgetItem(text)

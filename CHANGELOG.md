@@ -3,6 +3,15 @@
 All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub.
 
+## 1.2.0 — 2026-09-13
+
+### Added
+- **System-tray icon** with the current resolution, your presets, restore, and
+  show/quit. Optionally **keep running in the tray** when the window is closed.
+- **Global hotkeys**: give any preset, or *Restore desktop resolution*, a
+  system-wide shortcut (needs a modifier, e.g. Ctrl+Alt+1) that works from
+  anywhere, including inside a game.
+
 ## 1.1.0 — 2026-09-13
 
 ### Added

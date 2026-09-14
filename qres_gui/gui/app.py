@@ -15,6 +15,8 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("QRes GUI")
     app.setWindowIcon(theme.app_icon())
+    # We manage quitting ourselves, so hiding the window to the tray doesn't exit.
+    app.setQuitOnLastWindowClosed(False)
     theme.apply(app)
     window = MainWindow()
     window.show()
