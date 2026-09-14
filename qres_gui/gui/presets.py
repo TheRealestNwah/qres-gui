@@ -1,10 +1,11 @@
 """Quick resolution switching: apply a mode with a keep/revert safety prompt,
-and manage saved presets. Presets are {"name", "width", "height", "refresh"}
-(refresh 0 = same as desktop).
+and manage saved presets. Presets are
+{"name", "width", "height", "refresh", "display", "hotkey"} - refresh 0 means
+"same as desktop", and display "" means whichever screen is primary.
 
-Presets always act on the primary display. Picking a screen is a per-game
-thing - a preset and its global hotkey have no game, and so no display, to
-take it from."""
+The preset carries the display rather than the strip or the dialog choosing
+one, because a global hotkey fires with no UI context: the only place its
+screen can come from is the preset itself."""
 
 from __future__ import annotations
 
@@ -24,7 +25,14 @@ REVERT_SECONDS = 15
 def preset_label(preset: dict) -> str:
     refresh = int(preset.get("refresh") or 0)
     rate = "" if refresh == 0 else f" @ {refresh} Hz"
-    return f"{preset['width']} × {preset['height']}{rate}"
+    screen = preset_device(preset)
+    where = f"  ·  Display {display.device_number(screen)}" if screen else ""
+    return f"{preset['width']} × {preset['height']}{rate}{where}"
+
+
+def preset_device(preset: dict) -> str | None:
+    """The display a preset switches; None means whichever one is primary."""
+    return (preset.get("display") or "") or None
 
 
 def preset_name(preset: dict) -> str:
@@ -32,7 +40,7 @@ def preset_name(preset: dict) -> str:
 
 
 class ApplyResolutionDialog(QDialog):
-    """Switch the primary display to `target`, then ask whether to keep it.
+    """Switch a display to `target`, then ask whether to keep it.
 
     If the user doesn't confirm within REVERT_SECONDS, or the mode can't be
     set, the display goes back to what it was - so a black or unusable screen
@@ -40,12 +48,13 @@ class ApplyResolutionDialog(QDialog):
     """
 
     def __init__(self, parent, target: display.Mode, qres: str | None, temporary: bool,
-                 seconds: int = REVERT_SECONDS):
+                 seconds: int = REVERT_SECONDS, device: str | None = None):
         super().__init__(parent)
         self.setWindowTitle("Switch resolution")
         self.setMinimumWidth(440)
         self.target, self.qres, self.temporary = target, qres, temporary
-        self.original = display.current_mode()
+        self.device = device
+        self.original = display.current_mode(device)
         self.remaining = seconds
         self.switched = False
         self.kept = False
@@ -84,7 +93,7 @@ class ApplyResolutionDialog(QDialog):
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            how = display.set_mode(self.target, self.qres, self.temporary)
+            how = display.set_mode(self.target, self.qres, self.temporary, self.device)
         except display.DisplayError as exc:
             self._failed(exc)
             return
@@ -98,7 +107,7 @@ class ApplyResolutionDialog(QDialog):
 
     def _failed(self, exc: Exception) -> None:
         text = str(exc)
-        if not display.is_size_available(self.target.width, self.target.height):
+        if not display.is_size_available(self.target.width, self.target.height, device=self.device):
             text += ("\n\n" + f"Windows isn't offering {self.target.width} × {self.target.height}. "
                      "Create it as a custom resolution in your graphics control panel "
                      "(NVIDIA, AMD or Intel) first, then try again.")
@@ -125,7 +134,7 @@ class ApplyResolutionDialog(QDialog):
         if self.switched and not self.kept:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                display.set_mode(self.original, self.qres, self.temporary)
+                display.set_mode(self.original, self.qres, self.temporary, self.device)
             except display.DisplayError:
                 pass  # the main window's Restore button covers this
             finally:
@@ -136,12 +145,25 @@ class ApplyResolutionDialog(QDialog):
 class PresetEditor(QDialog):
     """Add or edit a single preset."""
 
-    def __init__(self, parent, modes: list[display.Mode], preset: dict | None = None):
+    def __init__(self, parent, modes: list[display.Mode], preset: dict | None = None,
+                 displays: list[display.Display] | None = None):
         super().__init__(parent)
         self.setWindowTitle("Edit preset" if preset else "Add preset")
         self.setMinimumWidth(440)
         self.modes = modes
-        current = display.current_mode()
+        self.displays = displays if displays is not None else display.list_displays()
+        saved_device = preset_device(preset or {})
+        current = self._mode_of(saved_device)
+
+        self.screen = QComboBox()
+        self.screen.setToolTip("Which screen this preset switches, including when its hotkey fires.\n"
+                               "\"Primary display\" follows whichever one Windows currently calls primary.")
+        self.screen.addItem("Primary display", "")
+        for entry in self.displays:
+            self.screen.addItem(entry.label, entry.device)
+        if saved_device and self.screen.findData(saved_device) < 0:
+            self.screen.addItem(f"{saved_device}  (not connected)", saved_device)
+        self.screen.setCurrentIndex(max(self.screen.findData(saved_device or ""), 0))
 
         self.name = QLineEdit(placeholderText="Optional (defaults to the resolution)")
         self.width = QSpinBox(minimum=320, maximum=15360, singleStep=10)
@@ -167,6 +189,7 @@ class PresetEditor(QDialog):
         self.status = QLabel(wordWrap=True)
         form = QFormLayout()
         form.addRow("Name", self.name)
+        form.addRow("Display", self.screen)
         form.addRow("Resolution", size_row)
         form.addRow("Refresh rate", self.refresh)
         form.addRow("Hotkey", hotkey_row)
@@ -181,11 +204,44 @@ class PresetEditor(QDialog):
 
         self.width.valueChanged.connect(self._refresh_rates)
         self.height.valueChanged.connect(self._refresh_rates)
+        self.screen.currentIndexChanged.connect(self._on_screen)
         self._refresh_rates(select=int((preset or {}).get("refresh") or 0))
+
+    def _mode_of(self, device: str | None) -> display.Mode:
+        try:
+            return display.current_mode(device)
+        except display.DisplayError:
+            return display.current_mode()   # it went away; the primary is the safe answer
+
+    def device(self) -> str | None:
+        return (self.screen.currentData() or "") or None
+
+    def _modes(self) -> list[display.Mode]:
+        """The chosen screen's modes; the passed-in list is the primary's."""
+        chosen = self.device()
+        if not chosen:
+            return self.modes
+        try:
+            return display.list_modes(chosen) or self.modes
+        except display.DisplayError:
+            return self.modes
+
+    def _on_screen(self) -> None:
+        """Follow the screen: show what it is running if it can't do the current size."""
+        modes = self._modes()
+        if modes and not display.is_size_available(self.width.value(), self.height.value(), modes):
+            here = self._mode_of(self.device())
+            self.width.blockSignals(True)
+            self.height.blockSignals(True)
+            self.width.setValue(here.width)
+            self.height.setValue(here.height)
+            self.width.blockSignals(False)
+            self.height.blockSignals(False)
+        self._refresh_rates(select=0)
 
     def _refresh_rates(self, *_args, select: int | None = None) -> None:
         want = select if select is not None else int(self.refresh.currentData() or 0)
-        rates = display.refresh_rates(self.width.value(), self.height.value(), self.modes)
+        rates = display.refresh_rates(self.width.value(), self.height.value(), self._modes())
         self.refresh.blockSignals(True)
         self.refresh.clear()
         self.refresh.addItem("Same as desktop", 0)
@@ -194,7 +250,7 @@ class PresetEditor(QDialog):
         self.refresh.setCurrentIndex(max(self.refresh.findData(want), 0))
         self.refresh.blockSignals(False)
 
-        if display.is_size_available(self.width.value(), self.height.value(), self.modes):
+        if display.is_size_available(self.width.value(), self.height.value(), self._modes()):
             theme.set_state(self.status, "ok", "✓  Windows offers this resolution.")
         else:
             theme.set_state(self.status, "warn",
@@ -203,7 +259,7 @@ class PresetEditor(QDialog):
 
     def preset(self) -> dict:
         return {"name": self.name.text().strip(), "width": self.width.value(), "height": self.height.value(),
-                "refresh": int(self.refresh.currentData() or 0),
+                "refresh": int(self.refresh.currentData() or 0), "display": self.screen.currentData() or "",
                 "hotkey": self.hotkey.keySequence().toString()}
 
 
@@ -217,8 +273,9 @@ class PresetsDialog(QDialog):
         self.setMinimumSize(520, 400)
         self.presets: list[dict] = [dict(p) for p in win.cfg.get("presets", [])]
 
-        intro = QLabel("Presets switch your primary display instantly. Applying one asks you to keep it, "
-                       "and reverts on its own if you don't — so a bad mode can't strand you.", wordWrap=True)
+        intro = QLabel("Presets switch a display instantly — the primary one unless the preset names "
+                       "another, including when its hotkey fires. Applying one asks you to keep it, and "
+                       "reverts on its own if you don't, so a bad mode can't strand you.", wordWrap=True)
         intro.setObjectName("muted")
         self.list = QListWidget()
         self.list.itemSelectionChanged.connect(self._sync_buttons)
@@ -251,7 +308,8 @@ class PresetsDialog(QDialog):
     def _reload(self, select: int | None = None) -> None:
         self.list.clear()
         for preset in self.presets:
-            available = display.is_size_available(preset["width"], preset["height"], self.win.modes)
+            available = display.is_size_available(preset["width"], preset["height"],
+                                                  self.win.modes_for(preset_device(preset)))
             text = f"{preset_name(preset)}    ·    {preset_label(preset)}"
             if preset.get("hotkey"):
                 text += f"    ·    {preset['hotkey']}"
@@ -278,21 +336,22 @@ class PresetsDialog(QDialog):
         self.win.save_presets()
 
     def _add(self) -> None:
-        editor = PresetEditor(self, self.win.modes)
+        editor = PresetEditor(self, self.win.modes, displays=self.win.displays)
         if editor.exec():
             self.presets.append(editor.preset())
             self._save()
             self._reload(len(self.presets) - 1)
 
     def _add_current(self) -> None:
-        mode = display.current_mode()
-        self.presets.append({"name": "", "width": mode.width, "height": mode.height, "refresh": 0})
+        mode = display.current_mode()   # the primary's, which is what "current" reads as here
+        self.presets.append({"name": "", "width": mode.width, "height": mode.height,
+                             "refresh": 0, "display": ""})
         self._save()
         self._reload(len(self.presets) - 1)
 
     def _edit(self) -> None:
         row = self.list.currentRow()
-        editor = PresetEditor(self, self.win.modes, self.presets[row])
+        editor = PresetEditor(self, self.win.modes, self.presets[row], displays=self.win.displays)
         if editor.exec():
             self.presets[row] = editor.preset()
             self._save()

@@ -23,7 +23,7 @@ from .detail_panel import DetailPanel
 from .dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
 from .guide import GettingStarted
 from .hotkeys import HotkeyManager
-from .presets import ApplyResolutionDialog, PresetsDialog, preset_label, preset_name
+from .presets import ApplyResolutionDialog, PresetsDialog, preset_device, preset_label, preset_name
 from .tray import Tray
 
 ICON_SIZE = QSize(92, 43)
@@ -259,8 +259,9 @@ class MainWindow(QMainWindow):
         self._no_presets.setVisible(not presets)
         for preset in presets:
             chip = QPushButton(preset_name(preset))
-            tip = f"Switch the primary display to {preset_label(preset)}"
-            if not display.is_size_available(preset["width"], preset["height"], self.modes):
+            screen = preset_device(preset)
+            tip = f"Switch to {preset_label(preset)}"   # the label names the screen when it isn't the primary
+            if not display.is_size_available(preset["width"], preset["height"], self.modes_for(screen)):
                 tip += " — needs a custom resolution first"
             chip.setToolTip(tip)
             chip.clicked.connect(lambda _c=False, p=preset: self.apply_preset(p))
@@ -272,13 +273,17 @@ class MainWindow(QMainWindow):
             self.refresh_tray(force=True)
 
     def _update_preset_highlight(self) -> None:
-        """Mark the chip whose resolution matches the display now, without rebuilding."""
-        try:
-            current = display.current_mode()
-        except display.DisplayError:
-            return
+        """Mark the chips whose resolution matches their own screen now, without rebuilding."""
+        seen: dict[str | None, display.Mode | None] = {}
         for chip, preset in getattr(self, "_preset_chips", []):
-            active = (current.width, current.height) == (preset["width"], preset["height"])
+            screen = preset_device(preset)
+            if screen not in seen:
+                try:
+                    seen[screen] = display.current_mode(screen)
+                except display.DisplayError:
+                    seen[screen] = None
+            current = seen[screen]
+            active = current is not None and (current.width, current.height) == (preset["width"], preset["height"])
             name = "presetActive" if active else "preset"
             if chip.objectName() != name:
                 chip.setObjectName(name)
@@ -286,17 +291,24 @@ class MainWindow(QMainWindow):
                 chip.style().polish(chip)
 
     def apply_preset(self, preset: dict) -> None:
+        """Apply a preset to the screen it names - including when a hotkey fires it."""
+        screen = preset_device(preset)
+        if screen and display.find_display(screen) is None:
+            self.statusBar().showMessage(
+                f"Display {display.device_number(screen)} isn't connected, so "
+                f"{preset_name(preset)} was left alone.", 8000)
+            return
         try:
-            desktop = display.current_mode()
+            desktop = display.current_mode(screen)
         except display.DisplayError:
             return
         target = display.resolve(int(preset["width"]), int(preset["height"]),
-                                 int(preset.get("refresh") or 0), desktop)
-        self.apply_resolution(target)
+                                 int(preset.get("refresh") or 0), desktop, screen)
+        self.apply_resolution(target, screen)
 
-    def apply_resolution(self, target: display.Mode) -> None:
+    def apply_resolution(self, target: display.Mode, device: str | None = None) -> None:
         ApplyResolutionDialog(self, target, display.find_qres(self.cfg.get("qres_path")),
-                              bool(self.cfg.get("temporary", True))).exec()
+                              bool(self.cfg.get("temporary", True)), device=device).exec()
         self._refresh_presets()
         self._poll_state()
 

@@ -32,6 +32,13 @@ real hardware yet. Both are off unless a profile asks for them.
 - Quick switching, presets and their hotkeys are now labelled as
   primary-display only, rather than being silently so.
 
+- **Presets name a display too.** The preset editor has a Display row, and a
+  preset's global hotkey switches the screen the preset names — a hotkey fires
+  with no window in front of you, so the screen has to come from the preset
+  itself. Chips, the tray menu and the presets list all match against the
+  preset's own screen, and a preset whose display isn't connected switches
+  nothing and says so.
+
 ### Fixed
 - **Restore desktop resolution** now puts back the display the session record
   names, rather than always the primary one.

@@ -118,8 +118,10 @@ If a profile names a monitor that isn't plugged in, QRes GUI switches **nothing*
 and says so — quietly switching a different screen would be worse than leaving
 it alone. The game still starts.
 
-Quick switching, presets and their global hotkeys always act on the primary
-display: a preset has no game, and so no display, to take one from.
+Presets name a display too, in the preset editor, and their global hotkeys
+follow it — a hotkey fires with no window in front of you, so the screen has to
+come from the preset itself. A preset whose display isn't plugged in switches
+nothing and says so.
 
 ### HDR
 
@@ -292,8 +294,6 @@ Layout:
 
 ## Known limitations
 
-- A game's profile can switch any connected display, but quick switching,
-  presets and their hotkeys are primary-display only.
 - QRes.exe can only drive the primary display, so a named secondary screen is
   switched through the Windows API instead.
 - HDR needs Windows 10 1709 or newer and a display Windows reports as

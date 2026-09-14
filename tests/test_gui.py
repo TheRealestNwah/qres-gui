@@ -526,6 +526,54 @@ def test_preset_chips_appear_and_apply(win, monkeypatch):
     assert applied == [display.Mode(2560, 1440, 165)]  # refresh 0 resolved to the desktop's 165
 
 
+def test_a_preset_can_name_a_display_and_applies_to_it(win, monkeypatch):
+    """A hotkey fires with no UI context, so the screen has to come from the preset."""
+    win.cfg["presets"] = [{"name": "Side 720p", "width": 1280, "height": 720, "refresh": 0,
+                           "display": SECOND.device}]
+    win._refresh_presets()
+    [(chip, preset)] = win._preset_chips
+    assert "Display 2" in chip.toolTip()
+
+    applied = []
+    monkeypatch.setattr(main_window, "ApplyResolutionDialog",
+                        lambda *a, **k: type("D", (), {"exec": lambda self: applied.append((a[1], k.get("device"))) or 0})())
+    chip.click()
+    # resolved against that screen's 60 Hz, and aimed at it
+    assert applied == [(display.Mode(1280, 720, 60), SECOND.device)]
+
+
+def test_a_preset_on_an_unplugged_display_switches_nothing(win, monkeypatch):
+    win.cfg["presets"] = [{"name": "Gone", "width": 1280, "height": 720, "refresh": 0,
+                           "display": r"\\.\DISPLAY9"}]
+    win._refresh_presets()
+    monkeypatch.setattr(main_window, "ApplyResolutionDialog",
+                        lambda *a, **k: pytest.fail("applied to a display that isn't there"))
+    win._preset_chips[0][0].click()
+    assert "isn't connected" in win.statusBar().currentMessage()
+
+
+def test_preset_chips_highlight_against_their_own_screen(win):
+    """The side preset matches that screen's mode; the primary one doesn't match it."""
+    win.cfg["presets"] = [{"name": "Side", "width": SECOND_DESKTOP.width, "height": SECOND_DESKTOP.height,
+                           "refresh": 0, "display": SECOND.device},
+                          {"name": "Same size, primary", "width": SECOND_DESKTOP.width,
+                           "height": SECOND_DESKTOP.height, "refresh": 0, "display": ""}]
+    win._refresh_presets()
+    names = [chip.objectName() for chip, _ in win._preset_chips]
+    assert names == ["presetActive", "preset"]
+
+
+def test_preset_editor_offers_the_displays_and_saves_the_choice(win):
+    from qres_gui.gui.presets import PresetEditor
+    editor = PresetEditor(win, win.modes, displays=win.displays)
+    combo = editor.screen
+    assert [combo.itemData(i) for i in range(combo.count())] == ["", PRIMARY.device, SECOND.device]
+    combo.setCurrentIndex(combo.findData(SECOND.device))
+    # 3440 × 1440 isn't on that screen, so it snaps to what that screen runs
+    assert (editor.width.value(), editor.height.value()) == (SECOND_DESKTOP.width, SECOND_DESKTOP.height)
+    assert editor.preset()["display"] == SECOND.device
+
+
 def test_presets_dialog_add_edit_remove_persist(win, monkeypatch):
     from qres_gui.gui.presets import PresetEditor, PresetsDialog
     dialog = PresetsDialog(win)
