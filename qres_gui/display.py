@@ -1,4 +1,4 @@
-"""Reading and changing a display's resolution.
+r"""Reading and changing a display's resolution.
 
 Every function here takes an optional `device` - the \\.\DISPLAYn name from
 `list_displays()` - and defaults to the primary display when it's None, which
@@ -164,7 +164,7 @@ def _display_device(device: str | None, index: int) -> DISPLAY_DEVICEW | None:
 
 
 def list_displays() -> list[Display]:
-    """Every display making up the desktop, the primary one first.
+    r"""Every display making up the desktop, the primary one first.
 
     The adapter entry carries the \\.\DISPLAYn name the rest of this module
     works in; the monitor attached to it carries a name worth showing someone.
@@ -187,7 +187,7 @@ def list_displays() -> list[Display]:
 
 
 def primary_device() -> str | None:
-    """The \\.\DISPLAYn of the primary display, or None if Windows doesn't say."""
+    r"""The \\.\DISPLAYn of the primary display, or None if Windows doesn't say."""
     return next((d.device for d in list_displays() if d.primary), None)
 
 
