@@ -44,6 +44,14 @@ real hardware yet. Both are off unless a profile asks for them.
   names, rather than always the primary one.
 - The guard no longer gives up when the display a profile named has been
   unplugged mid-game; it falls through to the restore attempt instead.
+- A leftover session record is now judged against the display it names. It was
+  compared with the primary, so a chance match would clear the record and
+  strand the other screen with nothing left to restore from.
+- A leftover record for a *different* screen is no longer inherited as this
+  screen's desktop mode, which could put one display's resolution on another.
+- **Getting started** now covers per-game displays and HDR, tailored to the PC
+  it's running on rather than promising a second screen or an HDR toggle that
+  isn't there.
 
 ### Removed
 - `display.monitor_count`, which only fed the "QRes only switches the primary

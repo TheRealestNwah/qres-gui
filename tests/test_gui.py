@@ -408,6 +408,32 @@ def test_guide_pages(win, env):
     assert visible == ["Stardew Valley    ·    GOG"]
 
 
+def test_guide_covers_displays_and_hdr_for_this_pc(win):
+    """The guide walks new users past both, so it has to mention them - and it
+    shouldn't promise a second screen or an HDR toggle that isn't there."""
+    from qres_gui.gui.guide import GettingStarted
+    guide = GettingStarted(win)
+    text = guide._extras()
+    assert "2 displays" in text                      # env fakes a primary + a second screen
+    assert "HDR on or off" in text                   # env fakes HDR as available
+    assert "Display box" in text
+
+
+def test_guide_says_why_hdr_is_unavailable_rather_than_promising_it(win, monkeypatch):
+    from qres_gui.gui.guide import GettingStarted
+    monkeypatch.setattr(hdr, "status", lambda device=None: hdr.Status(reason=hdr.NO_SUPPORT))
+    text = GettingStarted(win)._extras()
+    assert "isn't available on this PC" in text and "doesn't report HDR support" in text
+    assert "HDR on or off" not in text
+
+
+def test_guide_copes_with_an_hdr_status_that_gives_no_reason(win, monkeypatch):
+    """Status() defaults to an empty reason; formatting it must not blow up."""
+    from qres_gui.gui.guide import GettingStarted
+    monkeypatch.setattr(hdr, "status", lambda device=None: hdr.Status())
+    assert "isn't available on this PC" in GettingStarted(win)._extras()
+
+
 def test_finishing_the_guide_sets_up_the_chosen_game(win, env, monkeypatch):
     from qres_gui.gui.guide import GettingStarted
 
@@ -454,6 +480,23 @@ def test_guide_adds_qres_to_playnite(win, env, monkeypatch):
 
 
 # --- restoring the desktop ------------------------------------------------------------
+
+def test_leftover_session_is_judged_against_the_display_it_names(win, monkeypatch):
+    """Comparing the primary instead would clear the record on a chance match and
+    strand the other screen with nothing left to restore from."""
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.No)
+    # The record is for the second screen, sitting at the primary's mode by
+    # coincidence - the exact case that used to silently drop it.
+    session.write(DESKTOP.to_dict(), "gog:1453375253", device=SECOND.device)
+    stale = {**session.read(), "create_time": 0.0}
+    paths.session_path().write_text(json.dumps(stale), encoding="utf-8")
+
+    win._check_leftover_session()
+    assert asked and "Display 2" in asked[0]     # it noticed, and named the right screen
+    assert session.read() is None                # cleared only because we answered No
+
 
 def test_restore_desktop_puts_back_the_recorded_display_and_hdr(win, monkeypatch):
     """The button the launcher's failure notifications point people at has to undo

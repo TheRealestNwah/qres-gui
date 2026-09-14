@@ -194,8 +194,15 @@ class _Switch:
                           game_id=self.game_id)
             return
         # A stale record means an earlier launch never switched back, so its
-        # "original" is the real desktop mode, not whatever is set right now.
-        original = (display.Mode.from_dict(active["original"]) if active
+        # "original" is the real desktop mode rather than whatever is set right
+        # now - but only for the screen it was recorded on. Another display's
+        # mode is not this one's, and the session file holds a single record.
+        stale_device = (active.get("device") or None) if active else None
+        inherit = active is not None and stale_device == self.device
+        if active is not None and not inherit:
+            log.warning("the leftover record is for %s, not %s; using this display's current mode",
+                        stale_device or "the primary display", self.device or "the primary display")
+        original = (display.Mode.from_dict(active["original"]) if inherit
                     else display.current_mode(self.device))
         target = display.resolve(
             int(self.entry.get("width") or 0), int(self.entry.get("height") or 0),
@@ -203,7 +210,7 @@ class _Switch:
         )
         # Same idea for HDR: a stale record's state is the desktop one, and a
         # profile that doesn't ask for HDR leaves whatever is set alone.
-        carried = active.get("original_hdr") if active else None
+        carried = active.get("original_hdr") if inherit else None
         state = hdr.status(self.device)
         desktop_hdr = state.enabled if carried is None else bool(carried)
         want = self.entry.get("hdr")
@@ -215,11 +222,13 @@ class _Switch:
 
         if target == original and not change_hdr:
             log.info("target %s is the desktop mode; nothing to do", target)
-            if active:
+            if inherit:
                 if display.current_mode(self.device) != original:  # a taken-over switch needs undoing
                     display.set_mode(original, self.qres, self.temporary, self.device)
                 _switch_hdr(carried, self.game_id, starting=False, device=self.device)
                 session.clear()
+            # A record for another screen is left alone: we cannot restore it
+            # from here, and the GUI offers to on its next start.
             return
 
         # Record the desktop HDR state while it's away from it, so the guard can

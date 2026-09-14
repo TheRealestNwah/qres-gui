@@ -158,6 +158,39 @@ def test_the_guard_survives_a_display_that_vanished(switches, monkeypatch):
     assert session.read() is None
 
 
+def test_a_stale_record_for_another_screen_is_not_inherited(switches, monkeypatch):
+    """Its "original" is that screen's desktop mode, not this one's - applying it
+    here would put the wrong resolution on the wrong display."""
+    session.write(MODE_OF[SECOND.device].to_dict(), "steam:0", device=SECOND.device)
+    stale = {**session.read(), "create_time": 0.0}
+    paths.session_path().write_text(json.dumps(stale), encoding="utf-8")
+    _profile()  # a primary-display game: no "display" key
+
+    assert launcher.run("steam:1", _sleep_cmd(0.2)) == 0
+    # Switched from the PRIMARY's own mode, and back to it - not 1920x1080 from
+    # the leftover record for the other screen.
+    assert switches == [(display.Mode(1280, 720, 165), None),
+                        (MODE_OF[None], None)]
+
+
+def test_a_stale_record_for_the_same_screen_is_still_inherited(switches, monkeypatch):
+    """The original behaviour has to survive: a crashed launch on this screen
+    means its recorded mode is the real desktop one."""
+    desktop = MODE_OF[SECOND.device]
+    session.write(desktop.to_dict(), "steam:0", device=SECOND.device)
+    stale = {**session.read(), "create_time": 0.0}
+    paths.session_path().write_text(json.dumps(stale), encoding="utf-8")
+    # that screen is currently left on the crashed game's mode
+    monkeypatch.setattr(display, "current_mode",
+                        lambda device=None: display.Mode(800, 600, 60) if device == SECOND.device
+                        else MODE_OF[device])
+    _profile(display=SECOND.device)
+
+    assert launcher.run("steam:1", _sleep_cmd(0.2)) == 0
+    # restored to the RECORDED desktop mode, not the 800x600 it was sitting at
+    assert switches[-1] == (desktop, SECOND.device)
+
+
 # --- HDR follows the same screen -------------------------------------------
 
 def test_hdr_is_asked_about_the_games_display(switches, monkeypatch):

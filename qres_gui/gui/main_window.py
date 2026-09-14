@@ -967,13 +967,23 @@ class MainWindow(QMainWindow):
         if not active or session.owner_alive(active):
             return
         original = display.Mode.from_dict(active["original"])
-        if display.current_mode() == original:
+        # Against the screen the record names. Reading the primary instead would
+        # compare two different displays, and on a chance match would clear the
+        # record - stranding the other screen with nothing left to restore from.
+        device = active.get("device") or None
+        try:
+            current = display.current_mode(device)
+        except display.DisplayError:
+            current = None  # unplugged since; offer the restore rather than drop the record
+        if current == original:
             session.clear()
             return
+        where = f" on Display {display.device_number(device)}" if device else ""
         answer = QMessageBox.question(
             self, "Resolution wasn't restored",
-            f"A game launched through QRes didn't switch the display back.\n\n"
-            f"Current: {display.current_mode()}\nDesktop: {original}\n\nSwitch back now?",
+            f"A game launched through QRes didn't switch the display back{where}.\n\n"
+            f"Current: {current if current else 'not connected'}\nDesktop: {original}\n\n"
+            f"Switch back now?",
         )
         if answer == QMessageBox.StandardButton.Yes:
             self.restore_desktop()
