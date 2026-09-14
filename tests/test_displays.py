@@ -138,6 +138,26 @@ def test_the_guard_puts_back_the_display_from_the_record(switches, monkeypatch, 
     assert switches == [(MODE_OF[SECOND.device], SECOND.device)]
 
 
+def test_the_guard_survives_a_display_that_vanished(switches, monkeypatch):
+    """Reading a named display can now raise, and the guard is the safety net for a
+    killed launcher - it must not die there and leave the resolution stranded."""
+    monkeypatch.setattr(launcher, "GUARD_POLL", 0.05)
+    session.write(MODE_OF[SECOND.device].to_dict(), "steam:1", device=SECOND.device)
+    stale = {**session.read(), "create_time": 0.0}  # as if that launcher were long gone
+    paths.session_path().write_text(json.dumps(stale), encoding="utf-8")
+
+    def unplugged(device=None):
+        if device == SECOND.device:
+            raise display.DisplayError("that display isn't there")
+        return MODE_OF[device]
+
+    monkeypatch.setattr(display, "current_mode", unplugged)
+    monkeypatch.setattr(notify, "notify", lambda *a, **k: None)
+    assert launcher.guard(stale["pid"], stale["token"]) == 0
+    assert switches == [(MODE_OF[SECOND.device], SECOND.device)]  # it still tried the restore
+    assert session.read() is None
+
+
 # --- HDR follows the same screen -------------------------------------------
 
 def test_hdr_is_asked_about_the_games_display(switches, monkeypatch):

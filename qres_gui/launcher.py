@@ -645,7 +645,14 @@ def guard(pid: int, token: str | None = None) -> int:
 
     mode = display.Mode.from_dict(data["original"])
     device = data.get("device") or None
-    if display.current_mode(device) == mode:
+    try:
+        already_back = display.current_mode(device) == mode
+    except display.DisplayError as exc:
+        # The display the record names may have been unplugged while the game
+        # ran. The guard is the safety net, so it can't die here.
+        log.warning("couldn't read %s (%s); trying the restore anyway", device or "the primary display", exc)
+        already_back = False
+    if already_back:
         log.info("owner %d is gone; the display is already back at %s", pid, mode)
         _switch_hdr(data.get("original_hdr"), game_id, starting=False, device=device)
         session.clear(token=data.get("token"))
