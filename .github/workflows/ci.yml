@@ -4,11 +4,27 @@ name: CI
 # clean Windows machine. main holds the latest released version and dev the
 # work in progress, so both are tested. Pushing a v* tag also publishes that
 # zip as a GitHub release, with notes from CHANGELOG.md.
+#
+# "Run workflow" in the Actions tab does the same release without a local git:
+# give it a tag and what to release, and it creates the tag and publishes. A
+# tag made by GITHUB_TOKEN can't start another workflow run, so that path has
+# to build and publish in the one run rather than lean on the tag trigger.
 on:
   push:
     branches: [main, dev]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create and release, e.g. v1.3.0"
+        required: true
+        type: string
+      ref:
+        description: "Branch or commit to release"
+        required: false
+        default: dev
+        type: string
 
 permissions:
   contents: read
@@ -18,6 +34,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - uses: actions/setup-python@v7
         with:
@@ -42,13 +60,15 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: test-and-build
     runs-on: windows-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -57,16 +77,19 @@ jobs:
 
       - name: Check the tag matches the version
         shell: pwsh
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           $version = (Select-String -Path qres_gui/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
-          if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} doesn't match version $version" }
+          if ("v$version" -ne $env:TAG) { throw "Tag $env:TAG doesn't match version $version" }
 
       - name: Publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          $version = "${{ github.ref_name }}".TrimStart("v")
+          $version = $env:TAG.TrimStart("v")
           ./tools/release-notes.ps1 -Version $version | Set-Content notes.md -Encoding utf8
           $zip = (Get-ChildItem release/*.zip).FullName
           # A pre-release if the source marks this version unfinished, or it's
@@ -74,4 +97,9 @@ jobs:
           $flag = Select-String -Path qres_gui/__init__.py -Pattern '__prerelease__ = (\w+)' | Select-Object -First 1
           $unfinished = [bool]$flag -and $flag.Matches[0].Groups[1].Value -eq "True"
           $kind = if ($unfinished -or [version]$version -lt [version]"1.0.0") { "--prerelease" } else { "--latest" }
-          gh release create "${{ github.ref_name }}" $zip $kind --verify-tag --title "QRes GUI $version" --notes-file notes.md
+          # A pushed tag already exists, so insist on it. A dispatched one is
+          # created here from the commit that was just tested and built.
+          $where = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+              @("--target", "$(git rev-parse HEAD)")
+          } else { @("--verify-tag") }
+          gh release create $env:TAG $zip $kind @where --title "QRes GUI $version" --notes-file notes.md

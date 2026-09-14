@@ -28,6 +28,18 @@ branches run CI on every push.
 6. Fast-forward `main` to the tag, so it keeps matching the latest release.
 7. Optionally add a "Superseded by …" line to the previous release's notes.
 
+## Releasing without a local git
+
+Actions › CI › **Run workflow** does steps 4-5 from a browser (the GitHub
+mobile app included). Give it the tag to create and what to release - a branch
+or a commit SHA - and it tests, builds, creates the tag and publishes, all from
+the one run. The version check still applies, so the tag has to match
+`__version__` at that commit.
+
+It has to publish in the same run because a tag created by Actions' own
+`GITHUB_TOKEN` cannot start another workflow run, so the `push: tags` trigger
+never fires for it.
+
 A pre-release is never offered by the in-app update check to anyone on 1.0 or
 later (`updates.newest`), so it reaches only people who go to the releases
 page. To promote one once it's proven, set `__prerelease__ = False`, bump the
