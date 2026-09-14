@@ -51,10 +51,10 @@ def test_toast_xml_escapes_everything():
 
 def test_switch_failure_notifies_and_still_launches(isolated, monkeypatch):
     shown, _ = isolated
-    monkeypatch.setattr(display, "current_mode", lambda: display.Mode(3440, 1440, 165))
-    monkeypatch.setattr(display, "resolve", lambda w, h, r, d: display.Mode(w, h, 165))
+    monkeypatch.setattr(display, "current_mode", lambda device=None: display.Mode(3440, 1440, 165))
+    monkeypatch.setattr(display, "resolve", lambda w, h, r, d, device=None: display.Mode(w, h, 165))
 
-    def failing_set_mode(mode, qres, temporary):
+    def failing_set_mode(mode, qres, temporary, device=None):
         if mode.width == 2560:
             raise display.DisplayError("nope")
         return "stub"
@@ -86,8 +86,10 @@ def test_guard_restores_and_says_so(isolated, monkeypatch):
     monkeypatch.setattr(launcher, "GUARD_POLL", 0.05)
     desktop = display.Mode(3440, 1440, 165)
     calls = []
-    monkeypatch.setattr(display, "current_mode", lambda: calls[-1] if calls else display.Mode(2560, 1440, 165))
-    monkeypatch.setattr(display, "set_mode", lambda mode, qres, temporary: calls.append(mode) or "stub")
+    monkeypatch.setattr(display, "current_mode",
+                        lambda device=None: calls[-1] if calls else display.Mode(2560, 1440, 165))
+    monkeypatch.setattr(display, "set_mode",
+                        lambda mode, qres, temporary, device=None: calls.append(mode) or "stub")
     cfg = config.load()
     cfg["games"]["steam:9"] = {"name": "MGS4"}
     config.save(cfg)

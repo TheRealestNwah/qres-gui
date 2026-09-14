@@ -165,11 +165,11 @@ def test_guard_waits_for_a_game_that_outlives_its_owner(tmp_path, monkeypatch):
     desktop = display.Mode(3440, 1440, 165)
     state = {"mode": display.Mode(2560, 1440, 165), "restored_at": None}
 
-    def set_mode(mode, qres, temporary):
+    def set_mode(mode, qres, temporary, device=None):
         state["mode"], state["restored_at"] = mode, time.monotonic()
         return "stub"
 
-    monkeypatch.setattr(display, "current_mode", lambda: state["mode"])
+    monkeypatch.setattr(display, "current_mode", lambda device=None: state["mode"])
     monkeypatch.setattr(display, "set_mode", set_mode)
     shown = []
     monkeypatch.setattr(notify, "notify", lambda title, message, **k: shown.append((title, message)))
@@ -198,7 +198,7 @@ def test_guard_waits_for_a_game_that_outlives_its_owner(tmp_path, monkeypatch):
 def test_guard_stays_quiet_when_the_display_is_already_back(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "GUARD_POLL", 0.05)
     desktop = display.Mode(3440, 1440, 165)
-    monkeypatch.setattr(display, "current_mode", lambda: desktop)
+    monkeypatch.setattr(display, "current_mode", lambda device=None: desktop)
     monkeypatch.setattr(display, "set_mode", lambda *a: pytest.fail("nothing to switch"))
     monkeypatch.setattr(notify, "notify", lambda *a, **k: pytest.fail("nothing to report"))
     owner = subprocess.Popen([sys.executable, "-c", "pass"])

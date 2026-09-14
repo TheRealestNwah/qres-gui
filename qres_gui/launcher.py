@@ -132,7 +132,7 @@ def run(game_id: str, command: list[str]) -> int:
                 switch.restore()
 
 
-def _switch_hdr(on: bool | None, game_id: str, *, starting: bool) -> None:
+def _switch_hdr(on: bool | None, game_id: str, *, starting: bool, device: str | None = None) -> None:
     """Turn HDR on or off, if asked to (None means leave it alone).
 
     Never raises. HDR is an extra, not the job: it must not stop a game from
@@ -141,7 +141,7 @@ def _switch_hdr(on: bool | None, game_id: str, *, starting: bool) -> None:
     if on is None:
         return
     try:
-        hdr.set_enabled(bool(on))
+        hdr.set_enabled(bool(on), device)
     except Exception as exc:
         log.warning("couldn't turn HDR %s: %s", "on" if on else "off", exc)
         detail = (f"{_game_name(game_id)} is starting with HDR as it is." if starting
@@ -166,6 +166,9 @@ class _Switch:
         self.name = entry.get("name") or game_id
         self.qres = display.find_qres(cfg.get("qres_path"))
         self.temporary = bool(cfg.get("temporary", True))
+        # None means the primary display, which is what every profile meant
+        # before a display could be picked.
+        self.device = entry.get("display") or None
         self.original: display.Mode | None = None   # set only if we changed the resolution
         self.hdr_original: bool | None = None       # set only if HDR is away from its desktop state
         self.token: str | None = None
@@ -181,17 +184,27 @@ class _Switch:
                 log.info("another launch (pid %s) already switched the display; leaving it alone", active["pid"])
                 return
             log.info("taking over Playnite's earlier switch for %s", active.get("game_id"))
+        # A profile can name a display that has since been unplugged. Switching
+        # some other screen instead would be worse than not switching at all.
+        if self.device and display.find_display(self.device) is None:
+            log.warning("the display %s saved for %s isn't connected; not switching",
+                        self.device, self.game_id)
+            notify.notify(f"Couldn't switch the display for {self.name}",
+                          "The display this game is set up for isn't connected. It's starting as-is.",
+                          game_id=self.game_id)
+            return
         # A stale record means an earlier launch never switched back, so its
         # "original" is the real desktop mode, not whatever is set right now.
-        original = display.Mode.from_dict(active["original"]) if active else display.current_mode()
+        original = (display.Mode.from_dict(active["original"]) if active
+                    else display.current_mode(self.device))
         target = display.resolve(
             int(self.entry.get("width") or 0), int(self.entry.get("height") or 0),
-            int(self.entry.get("refresh") or 0), original,
+            int(self.entry.get("refresh") or 0), original, self.device,
         )
         # Same idea for HDR: a stale record's state is the desktop one, and a
         # profile that doesn't ask for HDR leaves whatever is set alone.
         carried = active.get("original_hdr") if active else None
-        state = hdr.status()
+        state = hdr.status(self.device)
         desktop_hdr = state.enabled if carried is None else bool(carried)
         want = self.entry.get("hdr")
         want = None if want is None else bool(want)
@@ -203,15 +216,17 @@ class _Switch:
         if target == original and not change_hdr:
             log.info("target %s is the desktop mode; nothing to do", target)
             if active:
-                if display.current_mode() != original:  # a taken-over switch still needs undoing
-                    display.set_mode(original, self.qres, self.temporary)
-                _switch_hdr(carried, self.game_id, starting=False)
+                if display.current_mode(self.device) != original:  # a taken-over switch needs undoing
+                    display.set_mode(original, self.qres, self.temporary, self.device)
+                _switch_hdr(carried, self.game_id, starting=False, device=self.device)
                 session.clear()
             return
 
         # Record the desktop HDR state while it's away from it, so the guard can
         # put it back even if this launcher never gets to.
         extra = dict(self.extra)
+        if self.device:
+            extra["device"] = self.device  # so the guard puts back the screen we changed
         if change_hdr or carried is not None:
             extra["original_hdr"] = self.hdr_original = desktop_hdr
         self.token = session.write(original.to_dict(), self.game_id, owner=self.owner, **extra)
@@ -221,10 +236,11 @@ class _Switch:
             # HDR first: switching it makes the display re-sync, which would
             # otherwise land on top of the resolution change.
             if change_hdr:
-                _switch_hdr(want, self.game_id, starting=True)
+                _switch_hdr(want, self.game_id, starting=True, device=self.device)
             if self.original is not None:
-                how = display.set_mode(target, self.qres, self.temporary)
-                log.info("switched %s -> %s (%s)", original, target, how)
+                how = display.set_mode(target, self.qres, self.temporary, self.device)
+                log.info("switched %s -> %s on %s (%s)", original, target,
+                         self.device or "the primary display", how)
             time.sleep(float(self.cfg.get("switch_delay", 1.0)))
         except display.DisplayError as exc:
             notify.notify(f"Couldn't switch to {target}",
@@ -239,13 +255,13 @@ class _Switch:
             time.sleep(float(self.cfg.get("restore_delay", 1.0)))
         if self.original is not None:
             try:
-                how = display.set_mode(self.original, self.qres, self.temporary)
+                how = display.set_mode(self.original, self.qres, self.temporary, self.device)
                 log.info("restored %s (%s)", self.original, how)
             except display.DisplayError as exc:
                 notify.notify(f"Couldn't switch back to {self.original}",
                               f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=self.game_id)
                 return  # keep the session record so the GUI can offer to restore
-        _switch_hdr(self.hdr_original, self.game_id, starting=False)
+        _switch_hdr(self.hdr_original, self.game_id, starting=False, device=self.device)
         session.clear(token=self.token)
 
 
@@ -628,9 +644,10 @@ def guard(pid: int, token: str | None = None) -> int:
         data = current
 
     mode = display.Mode.from_dict(data["original"])
-    if display.current_mode() == mode:
+    device = data.get("device") or None
+    if display.current_mode(device) == mode:
         log.info("owner %d is gone; the display is already back at %s", pid, mode)
-        _switch_hdr(data.get("original_hdr"), game_id, starting=False)
+        _switch_hdr(data.get("original_hdr"), game_id, starting=False, device=device)
         session.clear(token=data.get("token"))
         return 0
     log.warning("owner %d ended without switching back; restoring", pid)
@@ -655,9 +672,12 @@ def restore() -> int:
         notify.notify("No desktop resolution saved", "Open QRes GUI once so it can record your desktop resolution.")
         return 1
     mode = display.Mode.from_dict(source)
-    how = display.set_mode(mode, display.find_qres(cfg.get("qres_path")), bool(cfg.get("temporary", True)))
-    log.info("restored %s (%s)", mode, how)
-    _switch_hdr((data or {}).get("original_hdr"), (data or {}).get("game_id") or "", starting=False)
+    device = (data or {}).get("device") or None
+    how = display.set_mode(mode, display.find_qres(cfg.get("qres_path")),
+                           bool(cfg.get("temporary", True)), device)
+    log.info("restored %s on %s (%s)", mode, device or "the primary display", how)
+    _switch_hdr((data or {}).get("original_hdr"), (data or {}).get("game_id") or "",
+                starting=False, device=device)
     session.clear()
     return 0
 
@@ -704,14 +724,16 @@ def playnite_stop(payload: str) -> int:
     if not entry.get("quick_restore"):
         time.sleep(float(cfg.get("restore_delay", 1.0)))
     mode = display.Mode.from_dict(data["original"])
+    device = data.get("device") or None
     try:
-        how = display.set_mode(mode, display.find_qres(cfg.get("qres_path")), bool(cfg.get("temporary", True)))
+        how = display.set_mode(mode, display.find_qres(cfg.get("qres_path")),
+                               bool(cfg.get("temporary", True)), device)
     except display.DisplayError as exc:
         notify.notify(f"Couldn't switch back to {mode}",
                       f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=data.get("game_id"))
         return 1
     log.info("restored %s after Playnite stopped %s (%s)", mode, data.get("game_id"), how)
-    _switch_hdr(data.get("original_hdr"), data.get("game_id") or "", starting=False)
+    _switch_hdr(data.get("original_hdr"), data.get("game_id") or "", starting=False, device=device)
     session.clear(token=data.get("token"))
     return 0
 

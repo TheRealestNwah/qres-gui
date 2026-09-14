@@ -1,10 +1,12 @@
-"""Turning HDR on and off on the primary display.
+"""Turning HDR on and off on a display.
 
 QRes can't do this: HDR lives behind a different Windows API (the
 DisplayConfig one, Windows 10 1709 and later), so it gets its own module.
+Like `display`, every entry point takes an optional `device` and falls back to
+the primary one, so HDR and the resolution always land on the same screen.
 
 Everything here is best-effort and never guesses. `status()` reports whether
-the primary display can do HDR at all and what it's doing right now, with a
+that display can do HDR at all and what it's doing right now, with a
 plain-English `reason` when it can't, so the GUI can grey the control out and
 say why. Nothing in here may stop a game from starting: callers are expected
 to catch `HdrError` and carry on.
@@ -18,10 +20,11 @@ import time
 from ctypes import wintypes
 from dataclasses import dataclass
 
+from . import display
+
 log = logging.getLogger(__name__)
 
 QDC_ONLY_ACTIVE_PATHS = 0x00000002
-DISPLAY_DEVICE_PRIMARY_DEVICE = 0x00000004
 ERROR_INSUFFICIENT_BUFFER = 122
 CCHDEVICENAME = 32
 
@@ -41,6 +44,7 @@ SETTLE = 2.0
 
 NO_API = "This version of Windows doesn't have the HDR display setting (Windows 10 1709 or newer)."
 NO_CONFIG = "Windows didn't report the display configuration."
+NO_DISPLAY = "That display isn't connected right now."
 NO_SUPPORT = "Your primary display doesn't report HDR support."
 FORCED_OFF = "Windows has HDR switched off for this display; turn it on in Settings › System › Display › HDR."
 
@@ -119,14 +123,6 @@ class DISPLAYCONFIG_SET_ADVANCED_COLOR_STATE(ctypes.Structure):
     ]
 
 
-class DISPLAY_DEVICEW(ctypes.Structure):
-    _fields_ = [
-        ("cb", wintypes.DWORD), ("DeviceName", wintypes.WCHAR * 32),
-        ("DeviceString", wintypes.WCHAR * 128), ("StateFlags", wintypes.DWORD),
-        ("DeviceID", wintypes.WCHAR * 128), ("DeviceKey", wintypes.WCHAR * 128),
-    ]
-
-
 assert ctypes.sizeof(DISPLAYCONFIG_PATH_INFO) == 72
 assert ctypes.sizeof(DISPLAYCONFIG_MODE_INFO) == 64
 assert ctypes.sizeof(DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO) == 32
@@ -146,10 +142,6 @@ try:
     _user32.DisplayConfigGetDeviceInfo.restype = wintypes.LONG
     _user32.DisplayConfigSetDeviceInfo.argtypes = [ctypes.c_void_p]
     _user32.DisplayConfigSetDeviceInfo.restype = wintypes.LONG
-    _user32.EnumDisplayDevicesW.argtypes = [
-        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(DISPLAY_DEVICEW), wintypes.DWORD,
-    ]
-    _user32.EnumDisplayDevicesW.restype = wintypes.BOOL
     _HAVE_API = True
 except (AttributeError, OSError):  # a Windows too old to have DisplayConfig at all
     _HAVE_API = False
@@ -165,19 +157,6 @@ class Status:
 
 
 # --- talking to Windows ----------------------------------------------------
-
-def _primary_gdi_name() -> str:
-    r"""\\.\DISPLAYn of the primary display, or "" if Windows doesn't say."""
-    index = 0
-    while True:
-        device = DISPLAY_DEVICEW()
-        device.cb = ctypes.sizeof(DISPLAY_DEVICEW)  # EnumDisplayDevicesW wants this set every call
-        if not _user32.EnumDisplayDevicesW(None, index, ctypes.byref(device), 0):
-            return ""
-        if device.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE:
-            return device.DeviceName
-        index += 1
-
 
 def _active_paths() -> list[DISPLAYCONFIG_PATH_INFO]:
     """Every active source-to-display path. Empty if Windows wouldn't say."""
@@ -211,27 +190,32 @@ def _source_name(path: DISPLAYCONFIG_PATH_INFO) -> str:
     return request.viewGdiDeviceName
 
 
-def _primary_target() -> tuple[LUID, int] | None:
-    """(adapter, target id) of the output driving the primary display."""
+def _target_for(device: str | None) -> tuple[LUID, int] | None:
+    """(adapter, target id) of the output driving `device`, or the primary display."""
     paths = _active_paths()
     if not paths:
         return None
-    wanted = _primary_gdi_name()
+    wanted = device or display.primary_device() or ""
     for path in paths:
         if not wanted or _source_name(path) == wanted:
             return path.targetInfo.adapterId, path.targetInfo.id
+    if device:
+        # An explicitly named display we can't find is never worth guessing at:
+        # switching HDR on the wrong screen is the thing this is meant to stop.
+        log.info("no display-config path matches %s", device)
+        return None
     # Windows named a primary we couldn't match; the first active path is the
     # best remaining guess, and on a single-display PC it is the right one.
     log.info("no display-config path matches the primary display %s; using the first active one", wanted)
     return paths[0].targetInfo.adapterId, paths[0].targetInfo.id
 
 
-def _probe() -> tuple[Status, tuple[LUID, int] | None]:
+def _probe(device: str | None = None) -> tuple[Status, tuple[LUID, int] | None]:
     if not _HAVE_API:
         return Status(reason=NO_API), None
-    target = _primary_target()
+    target = _target_for(device)
     if target is None:
-        return Status(reason=NO_CONFIG), None
+        return Status(reason=NO_DISPLAY if device else NO_CONFIG), None
     info = DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO()
     info.header.type = GET_ADVANCED_COLOR_INFO
     info.header.size = ctypes.sizeof(info)
@@ -251,22 +235,22 @@ def _probe() -> tuple[Status, tuple[LUID, int] | None]:
 
 # --- what the rest of QRes GUI uses ----------------------------------------
 
-def status() -> Status:
-    """What HDR is doing on the primary display. Never raises."""
+def status(device: str | None = None) -> Status:
+    """What HDR is doing on `device`, or the primary display. Never raises."""
     try:
-        return _probe()[0]
+        return _probe(device)[0]
     except Exception:  # an unexpected API failure must not take the caller with it
         log.exception("couldn't read the HDR state")
         return Status(reason=NO_CONFIG)
 
 
-def set_enabled(on: bool) -> bool:
-    """Switch HDR on the primary display; returns whether anything changed.
+def set_enabled(on: bool, device: str | None = None) -> bool:
+    """Switch HDR on `device`, or the primary display; returns whether anything changed.
 
     Waits out the display's re-sync afterwards, so callers can act on the new
     state straight away. Raises HdrError if Windows wouldn't do it.
     """
-    state, target = _probe()
+    state, target = _probe(device)
     if state.enabled == on:
         return False  # nothing to do, so it doesn't matter whether we could
     if not state.supported or target is None:
@@ -279,9 +263,9 @@ def set_enabled(on: bool) -> bool:
     code = _user32.DisplayConfigSetDeviceInfo(ctypes.byref(request))
     if code:
         raise HdrError(f"Windows wouldn't turn HDR {'on' if on else 'off'} (error {code}).")
-    log.info("turned HDR %s", "on" if on else "off")
+    log.info("turned HDR %s on %s", "on" if on else "off", device or "the primary display")
     time.sleep(SETTLE)
-    if _probe()[0].enabled != on:
+    if _probe(device)[0].enabled != on:
         # Worth knowing about, but not worth telling the user off for: some
         # drivers report the new state late, and the display did change.
         log.warning("Windows accepted the HDR change but still reports it as %s", "off" if on else "on")

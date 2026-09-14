@@ -3,6 +3,38 @@
 All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub.
 
+## Unreleased
+
+Not tagged yet — `__version__` stays at 1.3.0 until `v1.3.0` is released, so
+that tag still matches.
+
+### Added
+- **Per-game display selection.** A game's profile can switch any connected
+  display, not just the primary one. The **Display** row at the top of the
+  Display box lists every monitor Windows reports, and the resolution and
+  refresh-rate choices come from the screen you pick. The default, *Primary
+  display*, follows whichever screen Windows calls primary, so it survives
+  re-plugging. HDR follows the same screen, so the two can't land on different
+  monitors.
+
+  The chosen display is recorded with the resolution, so the guard,
+  `QResLauncher restore` and Playnite's stop script all put back the screen
+  that was actually changed. A profile naming a monitor that isn't plugged in
+  switches nothing and says so, rather than switching a different screen.
+
+### Changed
+- `display` and `hdr` both take a display throughout, defaulting to the primary
+  one, so existing profiles behave exactly as before.
+- QRes.exe drives the primary display only — it has no monitor argument — so a
+  named secondary screen goes through the Windows display API instead. Primary
+  profiles still try QRes first.
+- Quick switching, presets and their hotkeys are now labelled as
+  primary-display only, rather than being silently so.
+
+### Removed
+- `display.monitor_count`, which only fed the "QRes only switches the primary
+  one" warning that the display picker replaces.
+
 ## 1.3.0 — 2026-09-14
 
 HDR is new here and hasn't yet run against a real HDR display — it's built to

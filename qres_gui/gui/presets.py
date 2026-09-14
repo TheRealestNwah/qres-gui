@@ -1,6 +1,10 @@
 """Quick resolution switching: apply a mode with a keep/revert safety prompt,
 and manage saved presets. Presets are {"name", "width", "height", "refresh"}
-(refresh 0 = same as desktop)."""
+(refresh 0 = same as desktop).
+
+Presets always act on the primary display. Picking a screen is a per-game
+thing - a preset and its global hotkey have no game, and so no display, to
+take it from."""
 
 from __future__ import annotations
 

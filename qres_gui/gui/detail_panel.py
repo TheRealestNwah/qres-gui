@@ -102,6 +102,11 @@ class DetailPanel(QScrollArea):
         self.enabled.toggled.connect(self._on_enabled)
         layout.addWidget(self.enabled)
         form = QFormLayout()
+        self.display_combo = QComboBox()
+        self.display_combo.setToolTip("Which screen this game switches. \"Primary display\" follows whichever\n"
+                                      "one Windows currently calls primary, so it survives re-plugging.")
+        self.display_combo.currentIndexChanged.connect(self._on_display)
+        form.addRow("Display", self.display_combo)
         self.res_combo = QComboBox()
         self.res_combo.currentIndexChanged.connect(self._on_resolution)
         self.rate_combo = QComboBox()
@@ -236,16 +241,10 @@ class DetailPanel(QScrollArea):
 
         self.enabled.setChecked(bool(entry.get("enabled")))
         self.quick.setChecked(bool(entry.get("quick_restore")))
+        self._fill_displays(entry.get("display") or "")
         self._fill_resolutions(entry["width"], entry["height"])
-        monitors = display.monitor_count()
-        if monitors > 1:
-            theme.set_state(self.primary_hint, "warn",
-                            f"You have {monitors} displays. QRes only switches the primary one, "
-                            "so run the game there.")
-        else:
-            self.primary_hint.setStyleSheet("")
-            self.primary_hint.setText("QRes switches the primary display only.")
         self._fill_rates(entry["width"], entry["height"], entry.get("refresh", 0))
+        self._update_display_hint()
         self._fill_hdr(entry.get("hdr"))
         self.watch.setText(", ".join(entry.get("watch", [])))
         self.extra_args.setText(entry.get("extra_args", ""))
@@ -270,16 +269,63 @@ class DetailPanel(QScrollArea):
         entry = self.win.entry_for(self.game, create=create)
         return entry if entry is not None else self.win.default_entry(self.game)
 
+    def _device(self) -> str | None:
+        """The display this game switches; None means whichever is primary."""
+        return (self._entry(create=False).get("display") or "") or None
+
+    def _modes(self) -> list[display.Mode]:
+        return self.win.modes_for(self._device())
+
+    def _live_mode(self, device: str | None) -> display.Mode:
+        """What this display is running right now."""
+        try:
+            return display.current_mode(device)
+        except display.DisplayError:
+            return display.current_mode()  # unplugged mid-edit; the primary is the safe answer
+
+    def _desktop_mode(self, device: str | None) -> display.Mode:
+        """What this display sits at normally - the saved desktop mode, for the primary."""
+        if device is None and self.win.cfg.get("desktop_mode"):
+            return display.Mode.from_dict(self.win.cfg["desktop_mode"])
+        return self._live_mode(device)
+
+    def _update_display_hint(self) -> None:
+        """Say how this screen gets switched - the answer differs off the primary."""
+        device = self._device()
+        if device and display.find_display(device) is None:
+            theme.set_state(self.primary_hint, "warn",
+                            "That display isn't connected. QRes won't switch anything for this game "
+                            "until it's back, rather than switch a different screen.")
+        elif device and not display.drives_primary(device):
+            self.primary_hint.setStyleSheet("")
+            self.primary_hint.setText("QRes.exe only drives the primary display, so this one is "
+                                      "switched through the Windows API instead.")
+        else:
+            self.primary_hint.setStyleSheet("")
+            self.primary_hint.setText("QRes switches the primary display.")
+
+    def _fill_displays(self, device: str) -> None:
+        """Every attached display, plus the saved one if it has been unplugged."""
+        self.display_combo.blockSignals(True)
+        self.display_combo.clear()
+        self.display_combo.addItem("Primary display", "")
+        for entry in self.win.displays:
+            self.display_combo.addItem(entry.label, entry.device)
+        if device and self.display_combo.findData(device) < 0:
+            self.display_combo.addItem(f"{device}  (not connected)", device)
+        self.display_combo.setCurrentIndex(max(self.display_combo.findData(device or ""), 0))
+        self.display_combo.blockSignals(False)
+
     def _fill_resolutions(self, width: int, height: int) -> None:
         self.res_combo.blockSignals(True)
         self.res_combo.clear()
-        sizes = list(dict.fromkeys((m.width, m.height) for m in self.win.modes))
+        sizes = list(dict.fromkeys((m.width, m.height) for m in self._modes()))
         if (width, height) not in sizes:
             sizes.append((width, height))
-        desktop = display.current_mode()
+        here = self._live_mode(self._device())
         for w, h in sizes:
             label = f"{w} × {h}"
-            if (w, h) == (desktop.width, desktop.height):
+            if (w, h) == (here.width, here.height):
                 label += "   (current)"
             self.res_combo.addItem(label, f"{w}x{h}")
         self.res_combo.setCurrentIndex(max(self.res_combo.findData(f"{width}x{height}"), 0))
@@ -288,9 +334,8 @@ class DetailPanel(QScrollArea):
     def _fill_rates(self, width: int, height: int, selected: int) -> None:
         self.rate_combo.blockSignals(True)
         self.rate_combo.clear()
-        rates = display.refresh_rates(width, height, self.win.modes)
-        desktop = self.win.cfg.get("desktop_mode") or display.current_mode().to_dict()
-        desktop_rate = int(desktop.get("refresh", 0))
+        rates = display.refresh_rates(width, height, self._modes())
+        desktop_rate = self._desktop_mode(self._device()).refresh
         if desktop_rate in rates or not rates:
             self.rate_combo.addItem(f"Same as desktop ({desktop_rate} Hz)", 0)
         else:
@@ -305,7 +350,7 @@ class DetailPanel(QScrollArea):
         self.hdr_combo.blockSignals(True)
         self.hdr_combo.setCurrentIndex(max(self.hdr_combo.findData(_hdr_choice(value)), 0))
         self.hdr_combo.blockSignals(False)
-        state = hdr.status()
+        state = hdr.status(self._device())
         self.hdr_combo.setEnabled(state.supported)
         if state.supported:
             self.hdr_hint.setStyleSheet("")
@@ -338,7 +383,7 @@ class DetailPanel(QScrollArea):
         w, h = (int(x) for x in self.res_combo.currentData().split("x"))
         entry = self._entry()
         entry["width"], entry["height"] = w, h
-        if entry.get("refresh") and entry["refresh"] not in display.refresh_rates(w, h, self.win.modes):
+        if entry.get("refresh") and entry["refresh"] not in display.refresh_rates(w, h, self._modes()):
             entry["refresh"] = 0
         self._fill_rates(w, h, entry.get("refresh", 0))
         self._changed()
@@ -348,6 +393,27 @@ class DetailPanel(QScrollArea):
             return
         self._entry()["refresh"] = int(self.rate_combo.currentData() or 0)
         self._changed()
+
+    def _on_display(self) -> None:
+        if self._loading or not self.game:
+            return
+        entry = self._entry()
+        entry["display"] = self.display_combo.currentData() or ""
+        device = entry["display"] or None
+        modes = self.win.modes_for(device)
+        # The saved resolution may be one this screen doesn't offer; snapping to
+        # what it is actually running beats saving a mode that can't be set.
+        if modes and not display.is_size_available(entry["width"], entry["height"], modes):
+            here = self._desktop_mode(device)
+            entry["width"], entry["height"], entry["refresh"] = here.width, here.height, 0
+        self._loading = True
+        self._fill_resolutions(entry["width"], entry["height"])
+        self._fill_rates(entry["width"], entry["height"], entry.get("refresh", 0))
+        self._fill_hdr(entry.get("hdr"))
+        self._loading = False
+        self._update_display_hint()
+        self._changed()
+        self.refresh_integration()
 
     def _on_hdr(self) -> None:
         if self._loading or not self.game:
@@ -420,13 +486,18 @@ class DetailPanel(QScrollArea):
 
     def _test(self) -> None:
         entry = self._entry(create=False)
-        desktop = display.Mode.from_dict(self.win.cfg.get("desktop_mode") or display.current_mode().to_dict())
-        target = display.resolve(entry["width"], entry["height"], entry.get("refresh", 0), desktop)
-        if target == display.current_mode():
-            QMessageBox.information(self, "Test resolution", f"The display is already at {target}.")
+        device = self._device()
+        if device and display.find_display(device) is None:
+            QMessageBox.information(self, "Test resolution",
+                                    "The display this game is set up for isn't connected.")
+            return
+        desktop = self._desktop_mode(device)
+        target = display.resolve(entry["width"], entry["height"], entry.get("refresh", 0), desktop, device)
+        if target == display.current_mode(device):
+            QMessageBox.information(self, "Test resolution", f"That display is already at {target}.")
             return
         TestResolutionDialog(self, target, display.find_qres(self.win.cfg.get("qres_path")),
-                             bool(self.win.cfg.get("temporary", True))).exec()
+                             bool(self.win.cfg.get("temporary", True)), device=device).exec()
         self.win._poll_state()
 
     def _open_folder(self) -> None:

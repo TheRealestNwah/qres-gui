@@ -19,6 +19,20 @@ MODES = [display.Mode(3440, 1440, 165), display.Mode(3440, 1440, 60), display.Mo
          display.Mode(2560, 1440, 60), display.Mode(1920, 1080, 165)]
 DESKTOP = MODES[0]
 
+PRIMARY = display.Display(r"\\.\DISPLAY1", "Main Monitor", True)
+SECOND = display.Display(r"\\.\DISPLAY2", "Side Monitor", False)
+# The second screen deliberately offers a different, smaller set.
+SECOND_MODES = [display.Mode(1920, 1080, 60), display.Mode(1280, 720, 60)]
+SECOND_DESKTOP = SECOND_MODES[0]
+
+
+def _modes_for(device=None):
+    return list(SECOND_MODES if device == SECOND.device else MODES)
+
+
+def _mode_of(device=None):
+    return SECOND_DESKTOP if device == SECOND.device else DESKTOP
+
 
 class FakeSteam:
     available = True
@@ -55,13 +69,17 @@ def qapp():
 @pytest.fixture
 def env(tmp_path, monkeypatch, qapp):
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
-    monkeypatch.setattr(display, "list_modes", lambda: list(MODES))
-    monkeypatch.setattr(display, "current_mode", lambda: DESKTOP)
+    monkeypatch.setattr(display, "list_modes", _modes_for)
+    monkeypatch.setattr(display, "current_mode", _mode_of)
     monkeypatch.setattr(display, "find_qres", lambda *a: r"C:\Tools\QRes.exe")
-    monkeypatch.setattr(display, "monitor_count", lambda: 1)
+    # Two displays, so the picker has something to pick.
+    monkeypatch.setattr(display, "list_displays", lambda: [PRIMARY, SECOND])
+    monkeypatch.setattr(display, "primary_device", lambda: PRIMARY.device)
+    monkeypatch.setattr(display, "find_display",
+                        lambda d: next((x for x in (PRIMARY, SECOND) if x.device == d), None) if d else PRIMARY)
     monkeypatch.setattr(display, "set_mode", lambda *a, **k: "stub")  # never change the real resolution
     # A CI runner's virtual display can't do HDR; pretend one that can.
-    monkeypatch.setattr(hdr, "status", lambda: hdr.Status(supported=True, enabled=False))
+    monkeypatch.setattr(hdr, "status", lambda device=None: hdr.Status(supported=True, enabled=False))
     monkeypatch.setattr(updates, "check", lambda current=None: None)  # never reach GitHub from tests
     desktop, menu = tmp_path / "Desktop", tmp_path / "Programs" / "QRes GUI"
     desktop.mkdir()
@@ -179,7 +197,7 @@ def test_hdr_choice_is_saved_and_shown_in_the_list(win):
 
 
 def test_hdr_is_greyed_out_when_the_display_cant_do_it(win, monkeypatch):
-    monkeypatch.setattr(hdr, "status", lambda: hdr.Status(reason=hdr.NO_SUPPORT))
+    monkeypatch.setattr(hdr, "status", lambda device=None: hdr.Status(reason=hdr.NO_SUPPORT))
     select(win, "gog:1453375253")
     assert not win.detail.hdr_combo.isEnabled()
     assert win.detail.hdr_hint.text() == hdr.NO_SUPPORT
@@ -266,13 +284,42 @@ def test_removing_a_playnite_game_forgets_it(win, monkeypatch):
     assert forgotten == ["abc"] and "playnite:abc" not in config.load()["games"]
 
 
-def test_says_it_only_switches_the_primary_display(win, monkeypatch):
+def test_display_defaults_to_primary_and_lists_the_others(win):
     select(win, "steam:10")
-    assert win.detail.primary_hint.text() == "QRes switches the primary display only."
-    monkeypatch.setattr(display, "monitor_count", lambda: 2)
+    combo = win.detail.display_combo
+    assert combo.currentData() == ""  # "" means whichever display is primary
+    assert [combo.itemData(i) for i in range(combo.count())] == ["", PRIMARY.device, SECOND.device]
+    assert combo.itemText(1) == "Display 1: Main Monitor  (primary)"
+    assert win.detail.primary_hint.text() == "QRes switches the primary display."
+
+
+def test_choosing_a_second_display_saves_it_and_relists_its_modes(win):
     select(win, "gog:1453375253")
-    assert win.detail.primary_hint.text().startswith("You have 2 displays. QRes only switches the primary one")
-    assert "Primary display" in [lbl.text() for lbl in win.findChildren(main_window.QLabel)]
+    win.detail.enabled.setChecked(True)
+    combo = win.detail.display_combo
+    combo.setCurrentIndex(combo.findData(SECOND.device))
+    win._save_now()
+    entry = config.load()["games"]["gog:1453375253"]
+    assert entry["display"] == SECOND.device
+    # 2560 × 1440 isn't on that screen, so the profile snaps to what it runs at.
+    assert (entry["width"], entry["height"]) == (1920, 1080)
+    res = win.detail.res_combo
+    assert [res.itemData(i) for i in range(res.count())] == ["1920x1080", "1280x720"]
+    assert "Windows API" in win.detail.primary_hint.text()
+    assert row(win, "gog:1453375253")[2] == "1920 × 1080  ·  Display 2"
+
+
+def test_a_display_that_is_unplugged_is_still_shown_and_flagged(win, monkeypatch):
+    cfg = config.load()
+    cfg["games"]["gog:1453375253"] = {**win.default_entry(win.games["gog:1453375253"]),
+                                      "enabled": True, "display": r"\\.\DISPLAY9"}
+    config.save(cfg)
+    win.cfg = config.load()
+    select(win, "gog:1453375253")
+    combo = win.detail.display_combo
+    assert combo.currentData() == r"\\.\DISPLAY9"
+    assert combo.currentText().endswith("(not connected)")
+    assert "isn't connected" in win.detail.primary_hint.text()
 
 
 # --- banner, dialogs, hooks -----------------------------------------------------------
@@ -456,8 +503,8 @@ def test_preset_editor_warns_about_custom_resolutions(win):
 def test_apply_resolution_dialog_reverts_when_not_kept(win, monkeypatch):
     from qres_gui.gui import presets
     calls = []
-    monkeypatch.setattr(display, "set_mode", lambda mode, *a: calls.append(mode) or "stub")
-    monkeypatch.setattr(display, "current_mode", lambda: display.Mode(3440, 1440, 165))
+    monkeypatch.setattr(display, "set_mode", lambda mode, *a, **k: calls.append(mode) or "stub")
+    monkeypatch.setattr(display, "current_mode", lambda device=None: display.Mode(3440, 1440, 165))
     dialog = presets.ApplyResolutionDialog(win, display.Mode(2560, 1440, 165), None, True)
     dialog._switch()
     assert calls == [display.Mode(2560, 1440, 165)] and dialog.switched

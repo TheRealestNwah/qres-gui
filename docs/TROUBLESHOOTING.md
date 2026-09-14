@@ -108,6 +108,20 @@ Center), then try again. Applying a resolution always asks *Keep this
 resolution?* and reverts after 15 seconds on its own, so a bad choice can't
 leave you stuck.
 
+## The wrong screen switched, or nothing switched
+
+Check the **Display** row at the top of the game's Display box. *Primary
+display* — the default — follows whichever monitor Windows currently calls
+primary, so moving cables around can move which screen a game switches. Name
+the monitor explicitly if you mean that one.
+
+If the profile names a display that isn't connected, QRes GUI switches nothing
+at all and notifies you, rather than switch a different screen. Plug it back in,
+or set the game to a screen you have.
+
+Quick switching, presets and their hotkeys always act on the primary display,
+whatever a game's profile says.
+
 ## The HDR control is greyed out
 
 QRes GUI only offers HDR where Windows says it's available on the **primary**

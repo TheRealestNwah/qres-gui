@@ -43,7 +43,9 @@ class MainWindow(QMainWindow):
         self.cfg = config.load()
         self.steam = SteamClient()
         self.steam_running = self.steam.available and self.steam.is_running()
-        self.modes = display.list_modes()
+        self.modes = display.list_modes()          # the primary's, which presets use
+        self.displays = display.list_displays()
+        self._modes_by_device: dict[str, list[display.Mode]] = {}
         self.games: dict[str, Game] = {}
         self.items: dict[str, GameItem] = {}
         self.launch_opts: dict[str, str] = {}
@@ -235,7 +237,10 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(bar)
         row.setContentsMargins(18, 6, 18, 6)
         row.setSpacing(6)
-        row.addWidget(QLabel("Quick switch", objectName="caption"))
+        quick = QLabel("Quick switch", objectName="caption")
+        quick.setToolTip("Presets and their hotkeys switch the primary display. To switch another "
+                         "screen, set it on a game's profile.")
+        row.addWidget(quick)
         self._preset_row = QHBoxLayout()
         self._preset_row.setSpacing(6)
         row.addLayout(self._preset_row)
@@ -449,6 +454,9 @@ class MainWindow(QMainWindow):
             if game:
                 entry["install_dir"] = game.install_dir
         self.playnite_state = playnite.state(paths.launcher_command())
+        # A rescan is also the moment to notice a display being plugged in or out.
+        self.displays = display.list_displays()
+        self._modes_by_device.clear()
         self.save()
 
         stores_present = sorted({g.store for g in self.games.values()}, key=list(STORE_LABELS).index)
@@ -479,6 +487,21 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError) as exc:
             self.launch_opts = {}
             self.statusBar().showMessage(f"Couldn't read Steam launch options: {exc}", 10000)
+
+    def modes_for(self, device: str | None) -> list[display.Mode]:
+        """The modes one display offers, read once and kept.
+
+        `self.modes` stays the primary's: presets and quick switching are
+        primary-only, so they have no display to ask about.
+        """
+        if not device:
+            return self.modes
+        if device not in self._modes_by_device:
+            try:
+                self._modes_by_device[device] = display.list_modes(device)
+            except display.DisplayError:
+                self._modes_by_device[device] = []
+        return self._modes_by_device[device] or self.modes
 
     def entry_for(self, game: Game, create: bool = False) -> dict | None:
         entry = self.cfg["games"].get(game.id)
@@ -603,6 +626,8 @@ class MainWindow(QMainWindow):
         item.setText(1, game.store_label)
         item.setForeground(1, QBrush(QColor(theme.STORE_COLORS.get(game.store, theme.MUTED))))
         target = f"{entry['width']} × {entry['height']}" if enabled else "—"
+        if enabled and entry.get("display"):
+            target += f"  ·  Display {display.device_number(entry['display'])}"
         if enabled and entry.get("hdr") is not None:
             target += "  ·  HDR " + ("on" if entry["hdr"] else "off")
         item.setText(2, target)

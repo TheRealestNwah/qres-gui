@@ -26,11 +26,13 @@ class FakeHdr:
                                 reason="" if supported else hdr.NO_SUPPORT)
         self.breaks = breaks
         self.calls: list[bool] = []
+        self.devices: list[str | None] = []   # every display it was asked about
 
-    def status(self) -> hdr.Status:
+    def status(self, device: str | None = None) -> hdr.Status:
+        self.devices.append(device)
         return self.state
 
-    def set_enabled(self, on: bool) -> bool:
+    def set_enabled(self, on: bool, device: str | None = None) -> bool:
         self.calls.append(on)
         if self.state.enabled == on:
             return False  # like the real one, which checks this before it can fail
@@ -44,8 +46,8 @@ class FakeHdr:
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     monkeypatch.setattr(launcher, "EXIT_GRACE", 0.5)
-    monkeypatch.setattr(display, "current_mode", lambda: DESKTOP)
-    monkeypatch.setattr(display, "resolve", lambda w, h, r, d: display.Mode(w, h, d.refresh))
+    monkeypatch.setattr(display, "current_mode", lambda device=None: DESKTOP)
+    monkeypatch.setattr(display, "resolve", lambda w, h, r, d, device=None: display.Mode(w, h, d.refresh))
     monkeypatch.setattr(launcher, "_spawn_guard", no_guard)
     monkeypatch.setattr(notify, "notify", lambda *a, **k: pytest.fail(f"unexpected notification: {a}"))
 

@@ -50,8 +50,8 @@ the Windows display API directly.
 
 `QResLauncher.exe` sits between the store and the game:
 
-1. It switches to the game's resolution, keeping the desktop's refresh rate
-   unless you pick another, and switches HDR if the game's profile asks for it.
+1. It switches the game's display to its resolution, keeping that screen's
+   refresh rate unless you pick another, and switches HDR if the profile asks.
 2. It starts the game and follows every process the game starts, including
    ones whose launcher has already exited.
 3. When they've all closed, it switches back.
@@ -95,12 +95,39 @@ If Playnite closes mid-game, the guard switches back.
 A Steam game that also has QRes launch options switches only once when started
 from Playnite, and still switches when started from Steam directly.
 
+### Choosing a display
+
+By default a game switches the **primary display**, which is what QRes GUI
+always did. A profile can name a different screen instead — the **Display** row
+at the top of a game's Display box lists every monitor Windows reports, and the
+resolution and refresh-rate choices below it then come from *that* screen.
+
+*Primary display* is the default rather than a specific monitor on purpose: it
+follows whichever screen Windows currently calls primary, so it survives
+re-plugging and swapping cables. Pick a named display when you mean that
+monitor specifically.
+
+QRes.exe itself takes no monitor argument, so it can only ever drive the
+primary display. A named secondary screen is switched through the Windows
+display API instead, which is per-monitor; the panel says so when you pick one.
+Nothing changes for primary-display profiles, which still go through QRes first.
+
+The display is recorded alongside the resolution, so the safety nets put back
+the screen that was changed rather than whichever happens to be primary later.
+If a profile names a monitor that isn't plugged in, QRes GUI switches **nothing**
+and says so — quietly switching a different screen would be worse than leaving
+it alone. The game still starts.
+
+Quick switching, presets and their global hotkeys always act on the primary
+display: a preset has no game, and so no display, to take one from.
+
 ### HDR
 
 A game's profile can also turn **HDR** on or off while it runs and put it back
 when it exits — on for a game that wants it, off so an SDR game doesn't come out
 washed out. QRes can't do this, so QRes GUI goes to the Windows display API
-(`DisplayConfig`, Windows 10 1709 and later) for the primary display.
+(`DisplayConfig`, Windows 10 1709 and later). HDR follows the same screen the
+profile switches, so the two never land on different monitors.
 
 The control sits with the resolution in the game's **Display** box: *Leave as it
 is* (the default, nothing changes), *Turn on for this game*, *Turn off for this
@@ -265,7 +292,10 @@ Layout:
 
 ## Known limitations
 
-- Only the primary display is switched (QRes's own behaviour), HDR included.
+- A game's profile can switch any connected display, but quick switching,
+  presets and their hotkeys are primary-display only.
+- QRes.exe can only drive the primary display, so a named secondary screen is
+  switched through the Windows API instead.
 - HDR needs Windows 10 1709 or newer and a display Windows reports as
   HDR-capable; where it isn't available the control says so and stays greyed
   out. Switching it blanks the display briefly while it re-syncs.
