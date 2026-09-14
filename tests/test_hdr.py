@@ -136,7 +136,7 @@ def test_an_unsupported_display_is_never_switched(monkeypatch, fake_hdr, notific
 
 
 def test_a_failed_hdr_switch_still_starts_the_game(monkeypatch, fake_hdr, notifications):
-    fake = fake_hdr(breaks=True)
+    fake_hdr(breaks=True)
     switched = []
     monkeypatch.setattr(display, "set_mode", lambda mode, *a, **k: switched.append(mode) or "stub")
     _profile(hdr=True)
