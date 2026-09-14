@@ -1,7 +1,8 @@
 # Changelog
 
 All notable changes to QRes GUI. Versions before 1.0 were marked as
-pre-releases on GitHub.
+pre-releases on GitHub, as is any later version that ships for testing before
+it has been proven on real hardware.
 
 ## Unreleased
 
@@ -37,11 +38,13 @@ that tag still matches.
 
 ## 1.3.0 — 2026-09-14
 
-HDR is new here and hasn't yet run against a real HDR display — it's built to
-the Windows DisplayConfig API and covered by tests, but that hardware isn't
-something CI has. It's off unless you ask for it: a game's HDR setting starts
-at *Leave as it is*, so nothing changes until you pick otherwise. Reports from
-anyone with an HDR display are welcome.
+**A pre-release.** The HDR switching below is built against the Windows
+DisplayConfig API and covered by tests, but it has not yet run against a real
+HDR display — that needs hardware CI doesn't have. Everything else in 1.2.0 is
+unchanged and unaffected: if you don't set a game's HDR option, nothing about
+this release behaves differently. The update check leaves pre-releases out, so
+no 1.x install is offered it automatically; download it from the releases page
+if you want to try it. Feedback on the HDR path is the point.
 
 ### Added
 - **Per-game HDR.** A game's profile can turn HDR on or off while it runs and
@@ -60,6 +63,12 @@ anyone with an HDR display are welcome.
 ### Changed
 - A game's **Resolution** box is now **Display**, covering resolution, refresh
   rate and HDR together.
+
+### Fixed
+- **Restore desktop resolution** now puts HDR back as well. It only switched
+  the resolution, which mattered because that button is where the launcher's
+  own failure notifications send you; every automatic path already restored
+  HDR.
 
 ## 1.2.0 — 2026-09-13
 

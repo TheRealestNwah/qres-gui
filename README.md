@@ -16,9 +16,9 @@ the Windows display API directly.
 > Steam overlay, launch options surviving a Steam restart, and a GOG game
 > (Stardew Valley) started from Playnite. Also the installer.
 >
-> **Not yet tested on real hardware:** HDR switching (new in 1.3.0). It's built
-> to the Windows DisplayConfig API and covered by tests, but no HDR display has
-> run it. Every game starts at *Leave as it is*, so it only runs if you ask.
+> **Not yet tested on real hardware:** HDR switching (new in 1.3.0, which is
+> published as a pre-release for that reason). It's built to the Windows
+> DisplayConfig API and covered by tests, but no HDR display has run it.
 >
 > **Not yet tested on real installs:** anti-cheat games, and detection for
 > Epic / Ubisoft / Heroic / Amazon / EA / Battle.net / Xbox (built to those
