@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qres_gui import __version__, config, display, notify, paths, playnite, shortcuts, updates
+from qres_gui import __version__, config, display, hdr, notify, paths, playnite, shortcuts, updates
 from qres_gui.gui import main_window, theme
 from qres_gui.gui.dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
 from qres_gui.stores import Game, steam
@@ -60,6 +60,8 @@ def env(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(display, "find_qres", lambda *a: r"C:\Tools\QRes.exe")
     monkeypatch.setattr(display, "monitor_count", lambda: 1)
     monkeypatch.setattr(display, "set_mode", lambda *a, **k: "stub")  # never change the real resolution
+    # A CI runner's virtual display can't do HDR; pretend one that can.
+    monkeypatch.setattr(hdr, "status", lambda: hdr.Status(supported=True, enabled=False))
     monkeypatch.setattr(updates, "check", lambda current=None: None)  # never reach GitHub from tests
     desktop, menu = tmp_path / "Desktop", tmp_path / "Programs" / "QRes GUI"
     desktop.mkdir()
@@ -158,6 +160,44 @@ def test_resolution_and_refresh_choices(win):
     win._save_now()
     entry = config.load()["games"]["steam:10"]
     assert (entry["width"], entry["height"], entry["refresh"], entry["quick_restore"]) == (1920, 1080, 165, True)
+
+
+def test_hdr_choice_is_saved_and_shown_in_the_list(win):
+    select(win, "gog:1453375253")
+    combo = win.detail.hdr_combo
+    assert combo.isEnabled() and combo.currentData() == ""  # "leave as it is" by default
+    win.detail.enabled.setChecked(True)
+    combo.setCurrentIndex(combo.findData("on"))
+    win._save_now()
+    assert config.load()["games"]["gog:1453375253"]["hdr"] is True
+    assert row(win, "gog:1453375253")[2] == "2560 × 1440  ·  HDR on"
+
+    combo.setCurrentIndex(combo.findData(""))
+    win._save_now()
+    assert config.load()["games"]["gog:1453375253"]["hdr"] is None
+    assert row(win, "gog:1453375253")[2] == "2560 × 1440"
+
+
+def test_hdr_is_greyed_out_when_the_display_cant_do_it(win, monkeypatch):
+    monkeypatch.setattr(hdr, "status", lambda: hdr.Status(reason=hdr.NO_SUPPORT))
+    select(win, "gog:1453375253")
+    assert not win.detail.hdr_combo.isEnabled()
+    assert win.detail.hdr_hint.text() == hdr.NO_SUPPORT
+
+
+def test_extra_arguments_for_a_store_game(win):
+    select(win, "gog:1453375253")
+    assert not win.detail.args_form.isHidden()
+    win.detail.extra_args.setText("  -windowed  ")
+    win.detail.extra_args.editingFinished.emit()
+    win._save_now()
+    assert config.load()["games"]["gog:1453375253"]["extra_args"] == "-windowed"
+    assert win.detail.target_label.text().endswith("-windowed")
+
+
+def test_extra_arguments_are_hidden_where_they_cant_apply(win):
+    select(win, "playnite:abc")  # Playnite starts it, so QRes never builds the command line
+    assert win.detail.args_form.isHidden()
 
 
 def test_apply_to_steam_keeps_the_users_options(win, env):

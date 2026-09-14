@@ -108,6 +108,44 @@ Center), then try again. Applying a resolution always asks *Keep this
 resolution?* and reverts after 15 seconds on its own, so a bad choice can't
 leave you stuck.
 
+## The HDR control is greyed out
+
+QRes GUI only offers HDR where Windows says it's available on the **primary**
+display. The greyed-out control says which of these it is:
+
+- *This version of Windows doesn't have the HDR display setting* — it needs
+  Windows 10 1709 or newer.
+- *Your primary display doesn't report HDR support* — the monitor, the cable or
+  the driver isn't offering it. Check *Settings › System › Display › HDR* in
+  Windows: if **Use HDR** isn't there for this display either, QRes GUI can't
+  add it.
+- *Windows has HDR switched off for this display* — Windows is currently
+  refusing it (a display mode that can't carry HDR, or the setting blocked).
+  Turn it on once in Windows and the control comes back.
+
+On more than one display, remember QRes GUI only ever touches the primary one,
+so check Windows' HDR setting for *that* display.
+
+## HDR didn't switch, or didn't switch back
+
+The game starts either way — HDR is never allowed to hold it up — and a
+notification says what failed. HDR is recorded in `session.json` next to the
+resolution, so **Restore desktop resolution** in the top bar (or
+`QResLauncher.exe restore`) puts both back. `%APPDATA%\QResGUI\launcher.log`
+has the detail.
+
+A second or two of black screen each way is normal: the display re-syncs when
+HDR changes.
+
+## Extra arguments aren't being used
+
+They only apply when QRes GUI starts the game: from a shortcut it created, or
+from **Play**. The store's own client and Playnite build their own command
+lines, so starting the game there skips the extra arguments — put them in that
+launcher's per-game settings instead. For Steam games there's no field at all:
+those go in Steam's *Properties › General › Launch options*, after the QRes
+hook.
+
 ## QRes.exe isn't found
 
 Point **Settings › QRes.exe** at it, or copy `QRes.exe` into the install

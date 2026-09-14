@@ -602,7 +602,10 @@ class MainWindow(QMainWindow):
         item.setText(0, game.name)
         item.setText(1, game.store_label)
         item.setForeground(1, QBrush(QColor(theme.STORE_COLORS.get(game.store, theme.MUTED))))
-        item.setText(2, f"{entry['width']} × {entry['height']}" if enabled else "—")
+        target = f"{entry['width']} × {entry['height']}" if enabled else "—"
+        if enabled and entry.get("hdr") is not None:
+            target += "  ·  HDR " + ("on" if entry["hdr"] else "off")
+        item.setText(2, target)
         item.setForeground(2, QBrush(QColor("#e4e6ea" if enabled else theme.MUTED)))
         text, kind = self.hook_status(game, entry)
         item.setText(3, text)

@@ -8,9 +8,10 @@
     QResLauncher remove-hooks [report.json]    (used by the uninstaller)
     QResLauncher guard <pid> [token]           (internal)
 
-`run` switches to the game's configured resolution, starts the game (the
-command Steam substitutes for %command%, or the launch target saved for the
-game), waits for the game's processes to exit and switches back.
+`run` switches to the game's configured resolution (and HDR, if its profile
+asks for that), starts the game (the command Steam substitutes for %command%,
+or the launch target saved for the game), waits for the game's processes to
+exit and switches back.
 
 `playnite-start` / `playnite-stop` only switch: Playnite starts the game,
 tracks it, and runs the stop script when it exits.
@@ -32,7 +33,7 @@ from logging.handlers import RotatingFileHandler
 
 import psutil
 
-from . import config, display, notify, paths, playnite, session
+from . import config, display, hdr, notify, paths, playnite, session
 
 log = logging.getLogger("qres.launcher")
 
@@ -104,7 +105,7 @@ def run(game_id: str, command: list[str]) -> int:
     if command:
         start = lambda: _start_command(command)
     elif entry.get("launch"):
-        start = lambda: _start_target(entry["launch"])
+        start = lambda: _start_target(entry["launch"], config.full_args(entry))
     else:
         raise LaunchError(f"There's no launch target saved for {game_id}. Set the game up in QRes GUI first.")
 
@@ -131,8 +132,27 @@ def run(game_id: str, command: list[str]) -> int:
                 switch.restore()
 
 
+def _switch_hdr(on: bool | None, game_id: str, *, starting: bool) -> None:
+    """Turn HDR on or off, if asked to (None means leave it alone).
+
+    Never raises. HDR is an extra, not the job: it must not stop a game from
+    starting, nor keep the resolution from being switched back.
+    """
+    if on is None:
+        return
+    try:
+        hdr.set_enabled(bool(on))
+    except Exception as exc:
+        log.warning("couldn't turn HDR %s: %s", "on" if on else "off", exc)
+        detail = (f"{_game_name(game_id)} is starting with HDR as it is." if starting
+                  else "Put it back in Settings › System › Display.")
+        notify.notify(f"Couldn't turn HDR {'on' if on else 'off'}", f"{detail} ({exc})", game_id=game_id)
+
+
 class _Switch:
-    """One resolution switch. The owner (this launcher, or Playnite) keeps it alive."""
+    """One resolution switch, and the HDR change that goes with it.
+
+    The owner (this launcher, or Playnite) keeps it alive."""
 
     def __init__(self, cfg: dict, entry: dict, game_id: str, owner: int | None = None,
                  install_dir: str = "", **extra):
@@ -146,7 +166,8 @@ class _Switch:
         self.name = entry.get("name") or game_id
         self.qres = display.find_qres(cfg.get("qres_path"))
         self.temporary = bool(cfg.get("temporary", True))
-        self.original: display.Mode | None = None
+        self.original: display.Mode | None = None   # set only if we changed the resolution
+        self.hdr_original: bool | None = None       # set only if HDR is away from its desktop state
         self.token: str | None = None
 
     def apply(self) -> None:
@@ -167,20 +188,43 @@ class _Switch:
             int(self.entry.get("width") or 0), int(self.entry.get("height") or 0),
             int(self.entry.get("refresh") or 0), original,
         )
-        if target == original:
+        # Same idea for HDR: a stale record's state is the desktop one, and a
+        # profile that doesn't ask for HDR leaves whatever is set alone.
+        carried = active.get("original_hdr") if active else None
+        state = hdr.status()
+        desktop_hdr = state.enabled if carried is None else bool(carried)
+        want = self.entry.get("hdr")
+        want = None if want is None else bool(want)
+        if want is not None and not state.supported:
+            log.info("not switching HDR for %s: %s", self.game_id, state.reason)
+            want = None
+        change_hdr = want is not None and state.enabled != want
+
+        if target == original and not change_hdr:
             log.info("target %s is the desktop mode; nothing to do", target)
             if active:
                 if display.current_mode() != original:  # a taken-over switch still needs undoing
                     display.set_mode(original, self.qres, self.temporary)
+                _switch_hdr(carried, self.game_id, starting=False)
                 session.clear()
             return
 
-        self.token = session.write(original.to_dict(), self.game_id, owner=self.owner, **self.extra)
-        self.original = original
+        # Record the desktop HDR state while it's away from it, so the guard can
+        # put it back even if this launcher never gets to.
+        extra = dict(self.extra)
+        if change_hdr or carried is not None:
+            extra["original_hdr"] = self.hdr_original = desktop_hdr
+        self.token = session.write(original.to_dict(), self.game_id, owner=self.owner, **extra)
+        self.original = original if target != original else None
         guard_starting = _spawn_guard(self.owner, self.token)  # in the background, while we switch
         try:
-            how = display.set_mode(target, self.qres, self.temporary)
-            log.info("switched %s -> %s (%s)", original, target, how)
+            # HDR first: switching it makes the display re-sync, which would
+            # otherwise land on top of the resolution change.
+            if change_hdr:
+                _switch_hdr(want, self.game_id, starting=True)
+            if self.original is not None:
+                how = display.set_mode(target, self.qres, self.temporary)
+                log.info("switched %s -> %s (%s)", original, target, how)
             time.sleep(float(self.cfg.get("switch_delay", 1.0)))
         except display.DisplayError as exc:
             notify.notify(f"Couldn't switch to {target}",
@@ -189,17 +233,19 @@ class _Switch:
             guard_starting.join(30)
 
     def restore(self) -> None:
-        if self.original is None:
+        if self.original is None and self.hdr_original is None:
             return
         if not self.entry.get("quick_restore"):
             time.sleep(float(self.cfg.get("restore_delay", 1.0)))
-        try:
-            how = display.set_mode(self.original, self.qres, self.temporary)
-            log.info("restored %s (%s)", self.original, how)
-        except display.DisplayError as exc:
-            notify.notify(f"Couldn't switch back to {self.original}",
-                          f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=self.game_id)
-            return  # keep the session record so the GUI can offer to restore
+        if self.original is not None:
+            try:
+                how = display.set_mode(self.original, self.qres, self.temporary)
+                log.info("restored %s (%s)", self.original, how)
+            except display.DisplayError as exc:
+                notify.notify(f"Couldn't switch back to {self.original}",
+                              f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=self.game_id)
+                return  # keep the session record so the GUI can offer to restore
+        _switch_hdr(self.hdr_original, self.game_id, starting=False)
         session.clear(token=self.token)
 
 
@@ -284,14 +330,18 @@ def _start_command(command: list[str]) -> subprocess.Popen | int:
     return _shell_execute(command[0], subprocess.list2cmdline(command[1:]), os.getcwd())
 
 
-def _start_target(launch: dict) -> subprocess.Popen | int | None:
+def _start_target(launch: dict, args: str | None = None) -> subprocess.Popen | int | None:
+    """Start a saved launch target. `args` overrides the stored ones (see config.full_args)."""
     kind = launch.get("type")
     if kind == "uri":
+        if args:
+            log.info("ignoring the arguments %r: %s starts through a store URL", args, launch["uri"])
         log.info("opening %s", launch["uri"])
         os.startfile(launch["uri"])
         return None
     if kind == "exe":
-        path, args = launch["path"], launch.get("args") or ""
+        path = launch["path"]
+        args = (launch.get("args") or "") if args is None else args
         if not os.path.isfile(path):
             raise LaunchError(f"{path} doesn't exist. The game may have moved or been uninstalled; "
                               "rescan or fix it in QRes GUI.")
@@ -580,6 +630,7 @@ def guard(pid: int, token: str | None = None) -> int:
     mode = display.Mode.from_dict(data["original"])
     if display.current_mode() == mode:
         log.info("owner %d is gone; the display is already back at %s", pid, mode)
+        _switch_hdr(data.get("original_hdr"), game_id, starting=False)
         session.clear(token=data.get("token"))
         return 0
     log.warning("owner %d ended without switching back; restoring", pid)
@@ -606,6 +657,7 @@ def restore() -> int:
     mode = display.Mode.from_dict(source)
     how = display.set_mode(mode, display.find_qres(cfg.get("qres_path")), bool(cfg.get("temporary", True)))
     log.info("restored %s (%s)", mode, how)
+    _switch_hdr((data or {}).get("original_hdr"), (data or {}).get("game_id") or "", starting=False)
     session.clear()
     return 0
 
@@ -659,6 +711,7 @@ def playnite_stop(payload: str) -> int:
                       f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=data.get("game_id"))
         return 1
     log.info("restored %s after Playnite stopped %s (%s)", mode, data.get("game_id"), how)
+    _switch_hdr(data.get("original_hdr"), data.get("game_id") or "", starting=False)
     session.clear(token=data.get("token"))
     return 0
 
