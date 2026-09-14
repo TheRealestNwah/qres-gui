@@ -1,9 +1,10 @@
 name: CI
 
 # Every push and pull request: run the tests and build the release zip on a
-# clean Windows machine. main holds the latest released version and dev the
-# work in progress, so both are tested. Pushing a v* tag also publishes that
-# zip as a GitHub release, with notes from CHANGELOG.md.
+# clean Windows machine. main holds the latest released version, and feature
+# branches reach it through pull requests, so both are tested. Pushing a v*
+# tag also publishes that zip as a GitHub release, with notes from
+# CHANGELOG.md.
 #
 # "Run workflow" in the Actions tab does the same release without a local git:
 # give it a tag and what to release, and it creates the tag and publishes. A
@@ -11,7 +12,7 @@ name: CI
 # to build and publish in the one run rather than lean on the tag trigger.
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -23,7 +24,7 @@ on:
       ref:
         description: "Branch or commit to release"
         required: false
-        default: dev
+        default: main
         type: string
 
 permissions:
