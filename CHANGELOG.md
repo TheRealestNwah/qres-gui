@@ -4,10 +4,10 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
-## Unreleased
+## 1.4.0 — 2026-09-14
 
-Not tagged yet — `__version__` stays at 1.3.0 until `v1.3.0` is released, so
-that tag still matches.
+Also a pre-release: neither HDR nor per-game display selection has run against
+real hardware yet. Both are off unless a profile asks for them.
 
 ### Added
 - **Per-game display selection.** A game's profile can switch any connected
@@ -31,6 +31,12 @@ that tag still matches.
   profiles still try QRes first.
 - Quick switching, presets and their hotkeys are now labelled as
   primary-display only, rather than being silently so.
+
+### Fixed
+- **Restore desktop resolution** now puts back the display the session record
+  names, rather than always the primary one.
+- The guard no longer gives up when the display a profile named has been
+  unplugged mid-game; it falls through to the restore attempt instead.
 
 ### Removed
 - `display.monitor_count`, which only fed the "QRes only switches the primary
