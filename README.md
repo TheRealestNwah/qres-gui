@@ -206,6 +206,20 @@ game has focus, Windows holds notifications in the notification centre
 instead of popping them up, so QRes GUI also shows the latest one in a banner
 until you dismiss it. **Settings › Send test notification** checks they work.
 
+### Backing up profiles
+
+**Settings › Profiles › Back up and restore…** exports your game profiles,
+presets and settings to a file you can keep or carry to another PC. It leaves
+out everything that only describes this machine — where QRes.exe is, the
+desktop resolution, and the paths the stores report, which a rescan fills in
+again. Importing matches games by their store ID, so it updates what the file
+names and leaves your other games alone, and it shows you exactly what will
+change before applying anything.
+
+A display a profile names is kept only if a monitor of the same name and number
+is connected; otherwise that profile falls back to the primary display rather
+than aiming at whichever screen happens to be second.
+
 ### Diagnostics
 
 **Settings › Diagnostics…** shows what QRes GUI can see: its version and where

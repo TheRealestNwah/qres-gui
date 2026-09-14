@@ -191,6 +191,24 @@ safety-net process through Windows' WMI service, which some antivirus tools
 look at closely. The source is at <https://github.com/TheRealestNwah/qres-gui>
 if you'd like to check or build it yourself.
 
+## Importing profiles didn't bring everything across
+
+By design. An export leaves out what only describes the PC it came from: where
+QRes.exe is, the desktop resolution, and each game's `launch` block and install
+folder, which the stores report and a rescan fills in again. Run a rescan on the
+new PC and the store games find themselves.
+
+Games you added by hand keep their path, because there's no store to find them
+from — if one doesn't start, point it at the executable again in its profile.
+
+A display a profile named is kept only when a monitor of the same name *and*
+number is connected here. Otherwise that profile falls back to the primary
+display and the import summary says which ones — `\\.\DISPLAY2` is a different
+monitor on a different PC, so the alternative is switching the wrong screen.
+
+Presets whose shortcut is already in use here come in without one; set a new
+shortcut in **Manage presets**.
+
 ## Removing QRes GUI
 
 **Settings › Remove all hooks…** takes QRes out of Steam's launch options and

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from copy import deepcopy
 
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence
@@ -11,7 +12,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from .. import __version__, diagnostics, display, notify, paths, playnite
+from .. import __version__, diagnostics, display, notify, paths, playnite, transfer
 from . import theme
 
 
@@ -54,7 +55,7 @@ def _hint(text: str) -> QLabel:
 
 class SettingsDialog(QDialog):
     def __init__(self, parent, cfg: dict, modes: list[display.Mode], on_remove_hooks=None, on_playnite=None,
-                 on_check_updates=None, on_guide=None, on_diagnostics=None):
+                 on_check_updates=None, on_guide=None, on_diagnostics=None, on_transfer=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(700)
@@ -158,6 +159,12 @@ class SettingsDialog(QDialog):
             row.addWidget(QPushButton("Diagnostics…", clicked=on_diagnostics))
         row.addStretch()
         form.addRow("Help", row)
+
+        if on_transfer:
+            # Closes Settings first: an import rewrites the very settings this
+            # dialog would write back over on OK.
+            form.addRow("Profiles", _left(QPushButton("Back up and restore…",
+                                                     clicked=lambda: (self.reject(), on_transfer()))))
 
         row = QHBoxLayout()
         row.addWidget(QLabel(f"QRes GUI {__version__} · MIT license"))
@@ -351,6 +358,100 @@ class DiagnosticsDialog(QDialog):
         _copy_to_clipboard(self.text)
         button.setText("Copied")
         QTimer.singleShot(1500, lambda: button.setText("Copy for a bug report"))
+
+
+
+FILTER = "QRes GUI profiles (*.qresprofiles.json);;JSON (*.json)"
+SUFFIX = ".qresprofiles.json"
+
+
+class TransferDialog(QDialog):
+    """Take profiles to another PC, or bring them back after a reinstall."""
+
+    def __init__(self, parent, cfg: dict):
+        super().__init__(parent)
+        self.setWindowTitle("Back up and restore profiles")
+        self.setMinimumWidth(640)
+        self.cfg = cfg
+        self.imported = False        # the caller reloads its views only if this is True
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.addWidget(_hint(
+            "An export carries your game profiles, presets and the settings that mean the same "
+            "thing anywhere. It leaves out what only applies to this PC — where QRes.exe is, your "
+            "desktop resolution, and the paths the stores report, which a rescan fills in again."))
+
+        counts = QLabel(f"{len(cfg.get('games') or {})} game profile(s) and "
+                        f"{len(cfg.get('presets') or [])} preset(s) here now.")
+        layout.addWidget(counts)
+
+        row = QHBoxLayout()
+        row.addWidget(QPushButton("Export…", objectName="primary", clicked=self._export))
+        row.addWidget(QPushButton("Import…", clicked=self._import))
+        row.addStretch()
+        layout.addLayout(row)
+
+        self.what = QVBoxLayout()
+        self.games = QCheckBox("Game profiles", checked=True)
+        self.presets = QCheckBox("Presets", checked=True)
+        self.settings = QCheckBox("Settings", checked=True)
+        for box in (self.games, self.presets, self.settings):
+            self.what.addWidget(box)
+        layout.addWidget(QLabel("Import brings in:", objectName="caption"))
+        layout.addLayout(self.what)
+        layout.addWidget(_hint(
+            "Importing matches games by their store ID, so it updates the profiles the file "
+            "mentions and leaves your other games alone. A display a profile names is kept only "
+            "if a monitor of the same name and number is connected here — otherwise that profile "
+            "uses the primary display rather than guessing at the wrong screen."))
+
+        close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close.rejected.connect(self.reject)
+        layout.addWidget(close)
+
+    def _export(self) -> None:
+        start = os.path.join(os.path.expanduser("~"), "QRes GUI profiles" + SUFFIX)
+        path, _ = QFileDialog.getSaveFileName(self, "Export profiles", start, FILTER)
+        if not path:
+            return
+        try:
+            written = transfer.write_export(self.cfg, path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export", f"Couldn't write that file: {exc.strerror or exc}")
+            return
+        data = transfer.export_data(self.cfg)
+        QMessageBox.information(self, "Export",
+                                f"Exported {len(data['games'])} game profile(s) and "
+                                f"{len(data['presets'])} preset(s) to:\n\n{written}")
+
+    def _import(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Import profiles", "", FILTER)
+        if not path:
+            return
+        try:
+            data = transfer.read_export(path)
+        except transfer.TransferError as exc:
+            QMessageBox.warning(self, "Import", str(exc))
+            return
+
+        # Say what it would do before doing it: an import rewrites profiles the
+        # user may have spent a while on.
+        preview = transfer.merge(deepcopy(self.cfg), data, games=self.games.isChecked(),
+                                 presets=self.presets.isChecked(), settings=self.settings.isChecked())
+        when = data.get("exported", "an unknown date")
+        body = f"From a QRes GUI {data.get('app_version', '?')} export made {when}.\n\n" + \
+               "\n".join(f"• {line}" for line in preview.lines())
+        if not preview.changed:
+            QMessageBox.information(self, "Import", body)
+            return
+        if QMessageBox.question(self, "Import", body + "\n\nApply this?") != QMessageBox.StandardButton.Yes:
+            return
+
+        transfer.merge(self.cfg, data, games=self.games.isChecked(),
+                       presets=self.presets.isChecked(), settings=self.settings.isChecked())
+        self.imported = True
+        self.accept()
 
 
 class AddGameDialog(QDialog):

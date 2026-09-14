@@ -4,6 +4,32 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
+## 1.5.0 — 2026-09-14
+
+Also a pre-release: it carries 1.3.0's HDR and multi-monitor code, which still
+hasn't run on real hardware.
+
+### Added
+- **Back up and restore profiles** (Settings › Profiles › **Back up and
+  restore…**). Export your game profiles, presets and settings to a file, and
+  import them on another PC or after a reinstall.
+
+  An export carries only what means the same thing anywhere. It leaves out
+  where QRes.exe is, your desktop resolution and the update-check state, and
+  for each game the `launch` block and install folder the stores report — a
+  rescan fills those in again, so copying them would point a profile at a path
+  that isn't there. Games added by hand keep their path, since they have no
+  store to be found from.
+
+  Importing matches games by their store ID, so it updates the profiles the
+  file names and leaves your other games alone; a profile's own `launch` block
+  is never overwritten. A display a profile names is kept only when a monitor
+  of the same name *and* number is connected here, and otherwise falls back to
+  the primary display — `\\.\DISPLAY2` is a different monitor on a different
+  PC, and switching the wrong screen is worse than switching none. A preset
+  whose shortcut is already in use here comes in without one. Nothing is
+  applied until you've seen a summary of exactly what will change.
+
 ## 1.4.0 — 2026-09-14
 
 Also a pre-release: it carries 1.3.0's HDR and multi-monitor code, which still
