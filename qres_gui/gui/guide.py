@@ -83,7 +83,8 @@ class GettingStarted(QDialog):
             _text("QRes GUI switches Windows to that resolution while such a game runs, and back again "
                   "when it closes:"),
             _text("•&nbsp; You pick the games and their resolution.<br>"
-                  "•&nbsp; It uses QRes to switch your <b>primary display</b> (other monitors are left alone).<br>"
+                  "•&nbsp; It switches your <b>primary display</b> by default, or another monitor if a game's "
+                  "profile names one.<br>"
                   "•&nbsp; Switches aren't saved to Windows, so even a crash or reboot comes back at "
                   "your normal resolution."),
             _text("This takes about a minute. You can reopen it from <b>Settings › Getting started</b>.",

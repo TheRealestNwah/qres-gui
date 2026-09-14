@@ -124,12 +124,13 @@ whatever a game's profile says.
 
 ## The HDR control is greyed out
 
-QRes GUI only offers HDR where Windows says it's available on the **primary**
-display. The greyed-out control says which of these it is:
+QRes GUI only offers HDR where Windows says it's available on the display the
+profile names — the primary one unless you picked another. The greyed-out
+control says which of these it is:
 
 - *This version of Windows doesn't have the HDR display setting* — it needs
   Windows 10 1709 or newer.
-- *Your primary display doesn't report HDR support* — the monitor, the cable or
+- *This display doesn't report HDR support* — the monitor, the cable or
   the driver isn't offering it. Check *Settings › System › Display › HDR* in
   Windows: if **Use HDR** isn't there for this display either, QRes GUI can't
   add it.

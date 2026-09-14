@@ -71,6 +71,9 @@ Feedback on the HDR and multi-monitor paths is the point.
   screen's desktop mode, which could put one display's resolution on another.
 - The Quick switch tooltip and `modes_for`'s docstring still said presets were
   primary-only after presets learned to name a screen.
+- The HDR control said "Your primary display doesn't report HDR support" no
+  matter which display it was reporting on, and the Getting started guide still
+  said other monitors are left alone.
 - **Getting started** now covers per-game displays and HDR, tailored to the PC
   it's running on rather than promising a second screen or an HDR toggle that
   isn't there.
