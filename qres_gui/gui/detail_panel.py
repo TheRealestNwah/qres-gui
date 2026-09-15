@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from .. import config, display, hdr, paths, playnite, shortcuts
+from .. import config, display, engines, hdr, paths, playnite, shortcuts
 from ..stores import Game, steam
 from . import theme
 from .dialogs import TestResolutionDialog
@@ -192,6 +192,17 @@ class DetailPanel(QScrollArea):
         # to be said in the open rather than in a tooltip.
         self.args_box = QGroupBox("Extra arguments")
         layout = QVBoxLayout(self.args_box)
+        # Options the game's engine documents (#14), when the install folder
+        # shows a known engine. Rebuilt per engine; see _show_engine.
+        self.engine_note = QLabel(objectName="caption")
+        layout.addWidget(self.engine_note)
+        self.engine_form = QFormLayout()
+        self.engine_form.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(self.engine_form)
+        self.engine_adds = _muted()
+        layout.addWidget(self.engine_adds)
+        self.engine_combos: dict[str, QComboBox] = {}
+        self._engine_shown: str | None = None
         self.extra_args = QLineEdit(placeholderText="Optional, e.g. -windowed -skipintro")
         self.extra_args.editingFinished.connect(self._on_extra_args)
         layout.addWidget(self.extra_args)
@@ -560,6 +571,63 @@ class DetailPanel(QScrollArea):
     def _set_args(self, usable: bool, hint: str) -> None:
         self.extra_args.setVisible(usable)
         self.args_hint.setText(hint)
+        # Engine options travel the same way as the typed arguments, so they're
+        # offered exactly where those can apply.
+        entry = self._entry(create=False)
+        self._show_engine(engines.detect(self.game.install_dir or "") if usable else None, entry)
+
+    def _show_engine(self, engine: str | None, entry: dict) -> None:
+        if engine != self._engine_shown:
+            while self.engine_form.rowCount():
+                self.engine_form.removeRow(0)
+            self.engine_combos = {}
+            for option in engines.OPTIONS.get(engine, ()):
+                combo = QComboBox()
+                combo.addItem("Game's choice", "")
+                choices = (engines.monitor_choices(len(self.win.displays)) if option.per_display
+                           else option.choices)
+                for value, label, _flags in choices:
+                    combo.addItem(label, value)
+                combo.currentIndexChanged.connect(lambda _i, key=option.key: self._on_engine_option(key))
+                self.engine_form.addRow(option.label, combo)
+                self.engine_combos[option.key] = combo
+            self._engine_shown = engine
+        for widget in (self.engine_note, self.engine_adds):
+            widget.setVisible(engine is not None)
+        if engine is None:
+            return
+        name = engines.NAMES[engine]
+        self.engine_note.setText(f"{name} options")
+        saved = entry.get("engine_args") or {}
+        saved = saved if saved.get("engine") == engine else {}
+        for key, combo in self.engine_combos.items():
+            combo.blockSignals(True)
+            combo.setCurrentIndex(max(combo.findData(saved.get(key, "")), 0))
+            combo.blockSignals(False)
+        adds = engines.command_line(saved)
+        self.engine_adds.setText(
+            (f"Adds: {adds}. " if adds else "") +
+            f"Documented by {name} for every game made with it, though a game can choose to ignore them. "
+            "Anything typed below goes after these.")
+
+    def _on_engine_option(self, key: str) -> None:
+        if self._loading or not self.game or not self._engine_shown:
+            return
+        entry = self._entry()
+        choices = dict(entry.get("engine_args") or {})
+        if choices.get("engine") != self._engine_shown:
+            choices = {}          # choices made for another engine mean nothing here
+        choices["engine"] = self._engine_shown
+        value = self.engine_combos[key].currentData()
+        if value:
+            choices[key] = value
+        else:
+            choices.pop(key, None)
+        if set(choices) == {"engine"}:
+            entry.pop("engine_args", None)
+        else:
+            entry["engine_args"] = choices
+        self._changed()   # refreshes the panel too, and with it the "Adds:" line
 
     def _refresh_steam(self, enabled: bool) -> None:
         appid = self.game.id.split(":", 1)[1]

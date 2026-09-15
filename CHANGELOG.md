@@ -7,6 +7,13 @@ it has been proven on real hardware.
 ## Unreleased
 
 ### Added
+- **Engine options as choices** ([#14](https://github.com/TheRealestNwah/qres-gui/issues/14)).
+  For games made with Unity or Unreal Engine, the Extra arguments box offers
+  the options the engine documents for every game made with it: window mode,
+  graphics API and, for Unity, which monitor — no need to know the flags.
+  The engine is told from files in the game's folder and nothing is looked up
+  online; the box shows exactly what the choices add, and anything you type
+  goes after them. Backups carry the choices.
 - **Hide games from the list** ([#10](https://github.com/TheRealestNwah/qres-gui/issues/10)):
   right-click a game › **Hide from list**. Only the list changes — a hidden game
   keeps its profile and still switches when started. While anything is hidden,

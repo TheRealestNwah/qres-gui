@@ -23,7 +23,7 @@ import json
 import os
 from copy import deepcopy
 
-from . import paths
+from . import engines, paths
 
 DEFAULTS: dict = {
     "qres_path": "",
@@ -65,9 +65,18 @@ def load() -> dict:
     return cfg
 
 
+def extra_args(entry: dict) -> str:
+    """What QRes adds to a game's command line: the engine options picked, then the user's own text.
+
+    The user's text comes last so it can override an engine option if they want.
+    """
+    parts = (engines.command_line(entry.get("engine_args")), entry.get("extra_args") or "")
+    return " ".join(part.strip() for part in parts if part.strip())
+
+
 def full_args(entry: dict) -> str:
-    """A game's command line: the store's own arguments, then the user's extras."""
-    parts = ((entry.get("launch") or {}).get("args") or "", entry.get("extra_args") or "")
+    """A game's command line: the store's own arguments, then what QRes adds (extra_args)."""
+    parts = ((entry.get("launch") or {}).get("args") or "", extra_args(entry))
     return " ".join(part.strip() for part in parts if part.strip())
 
 

@@ -47,7 +47,7 @@ PORTABLE_SETTINGS = (
 # A game profile's portable half. "launch" rides along for manual games only,
 # which own it - a store game's copy is rewritten by the next rescan.
 PORTABLE_GAME = ("name", "store", "enabled", "width", "height", "refresh", "hdr",
-                 "watch", "extra_args", "quick_restore")
+                 "watch", "extra_args", "quick_restore", "engine_args")
 PORTABLE_PRESET = ("name", "width", "height", "refresh", "hotkey")
 
 # The fields the first exports carried, before they said which ones they carry.
@@ -241,6 +241,8 @@ def _clean_game(saved: dict) -> dict | None:
     entry = {key: saved[key] for key in PORTABLE_GAME if key in saved}
     if not isinstance(entry.get("watch", []), list):
         entry.pop("watch")
+    if not isinstance(entry.get("engine_args", {}), dict):
+        entry.pop("engine_args")
     if saved.get("store") == "manual" and isinstance(saved.get("launch"), dict):
         entry["launch"] = saved["launch"]
     return entry
@@ -343,7 +345,8 @@ def restore(cfg: dict, data: dict, *, games: bool = True, presets: bool = True,
 
 # What a profile means when it doesn't mention these: an older profile has no
 # key where a restored one has the empty value, and that's the same choice.
-_PROFILE_DEFAULTS = {"display": "", "hdr": None, "extra_args": "", "quick_restore": False, "watch": []}
+_PROFILE_DEFAULTS = {"display": "", "hdr": None, "extra_args": "", "quick_restore": False, "watch": [],
+                     "engine_args": {}}
 
 
 def _same_profile(a: dict, b: dict) -> bool:

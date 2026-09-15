@@ -171,6 +171,16 @@ Where they apply depends on what starts the game, and the box says which:
 Hand-added games have a full **Arguments** field of their own, since there's no
 store command line to add to.
 
+For games made with **Unity** or **Unreal Engine**, the box also offers that
+engine's own options as choices — window mode (borderless, exclusive
+fullscreen, windowed), graphics API (Direct3D 11 / 12, Vulkan) and, for Unity,
+which monitor — and shows exactly what they add. QRes GUI tells the engine from
+files in the game's folder; nothing is looked up online. The options are the
+ones each engine documents for every game made with it
+([Unity](https://docs.unity3d.com/Manual/PlayerCommandLineArguments.html),
+[Unreal](https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-command-line-arguments-reference)),
+but a game can still choose to ignore them. Anything you type goes after them.
+
 ### Quick resolution switching
 
 The **Quick switch** strip under the top bar changes your primary display's
