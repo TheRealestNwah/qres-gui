@@ -73,8 +73,19 @@ closed and QRes thought the game was done.
   settings file when it exits. Use **Close Steam**, or **Copy** the options and
   paste them into Steam › right-click the game › Properties › General ›
   Launch options.
-- **"Launch options need updating":** QRes GUI was moved or reinstalled
-  somewhere else. Close Steam and click **Update Steam launch options**.
+- **"Launch options need updating":** the launch options run a different copy
+  of QRes GUI than the installed one — an unzipped download, say. Close Steam
+  and click **Update Steam launch options** in the installed QRes GUI.
+- **"Launch options broken":** they run a QRes launcher that has since been
+  deleted or moved, so Steam can't start the game at all. Same fix: close
+  Steam, then **Update Steam launch options**.
+- **Trying out a different version:** unzip it anywhere and run it — Steam,
+  Playnite and shortcuts keep using your *installed* copy, so nothing breaks
+  when you delete the test folder. The flip side is that games launch the way
+  the installed version works; to try a new version's switching, install it
+  (`install.cmd`). **Settings › Launcher** and **Diagnostics** say which copy
+  games launch through. With nothing installed, hooks point at the copy you're
+  running, so don't move or delete its folder while games are set up.
 - A backup of Steam's `localconfig.vdf` is kept next to it (the last five),
   named `localconfig.vdf.qresgui-<date>.bak`.
 
@@ -166,12 +177,18 @@ HDR changes.
 
 ## Extra arguments aren't being used
 
-They only apply when QRes GUI starts the game: from a shortcut it created, or
-from **Play**. The store's own client and Playnite build their own command
-lines, so starting the game there skips the extra arguments — put them in that
-launcher's per-game settings instead. For Steam games there's no field at all:
-those go in Steam's *Properties › General › Launch options*, after the QRes
-hook.
+The game's **Extra arguments** box says where they apply for that game. In short:
+
+- **Steam games** get them whenever Steam starts the game through QRes, so the
+  QRes launch options have to be applied (the box says if they aren't yet).
+  `launcher.log` shows `adding the profile's extra arguments` for each launch.
+- **Other store games** get them only when QRes GUI starts the game — a
+  shortcut it created, or **Play**. Starting it from the store's own client or
+  from Playnite skips them, because those build the command line themselves.
+  Put the arguments in that tool instead (Playnite: right-click the game › Edit
+  › Actions).
+- Some games ignore arguments they don't know. Check the game's own
+  documentation or PCGamingWiki for what it accepts.
 
 ## QRes.exe isn't found
 

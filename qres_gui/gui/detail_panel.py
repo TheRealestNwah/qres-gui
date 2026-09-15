@@ -173,16 +173,6 @@ class DetailPanel(QScrollArea):
         mform.addRow("Executable", exe_row)
         mform.addRow("Arguments", self.manual_args)
         layout.addWidget(self.manual_form)
-        self.args_form = QWidget()
-        aform = QFormLayout(self.args_form)
-        aform.setContentsMargins(0, 0, 0, 0)
-        self.extra_args = QLineEdit(placeholderText="Optional, e.g. -windowed -skipintro")
-        self.extra_args.setToolTip("Added to the arguments the store already uses. They apply when QRes GUI\n"
-                                   "starts the game - from a shortcut it made, or from Play - and not when\n"
-                                   "the store or Playnite starts it, because then they build the command line.")
-        self.extra_args.editingFinished.connect(self._on_extra_args)
-        aform.addRow("Extra arguments", self.extra_args)
-        layout.addWidget(self.args_form)
         self.shortcut_status = QLabel(wordWrap=True)
         layout.addWidget(self.shortcut_status)
         self.desktop_btn = QPushButton("Create desktop shortcut", objectName="primary",
@@ -196,6 +186,18 @@ class DetailPanel(QScrollArea):
         self.shortcut_hint = _muted()
         layout.addWidget(self.shortcut_hint)
         v.addWidget(self.shortcut_box)
+
+        # Extra arguments: their own box, because where they can apply - and
+        # where they can't - depends on how the game is started, and that has
+        # to be said in the open rather than in a tooltip.
+        self.args_box = QGroupBox("Extra arguments")
+        layout = QVBoxLayout(self.args_box)
+        self.extra_args = QLineEdit(placeholderText="Optional, e.g. -windowed -skipintro")
+        self.extra_args.editingFinished.connect(self._on_extra_args)
+        layout.addWidget(self.extra_args)
+        self.args_hint = _muted()
+        layout.addWidget(self.args_hint)
+        v.addWidget(self.args_box)
 
         # Process tracking
         box = QGroupBox("Game process")
@@ -515,6 +517,7 @@ class DetailPanel(QScrollArea):
             self._refresh_steam(enabled)
         else:
             self._refresh_shortcuts(entry, enabled, watch_needed)
+        self._refresh_args(entry)
 
         if self.game.needs_watch:
             text = (f"Required: {self.game.store_label} starts the game itself, so QRes needs the game's "
@@ -529,6 +532,34 @@ class DetailPanel(QScrollArea):
                 "If a launcher stays open after you quit, or the game hands off to another exe, "
                 "name the real game exe here and QRes will wait for that instead.")
             self.watch_hint.setStyleSheet("")
+
+    def _refresh_args(self, entry: dict) -> None:
+        """Say where extra arguments apply for this game - and where to set them when they can't."""
+        # A game added by hand has its own Arguments field; there's no store's to add to.
+        self.args_box.setVisible(self.game.store != "manual")
+        launch = entry.get("launch") or self.game.launch or {}
+        playnite_edit = "right-click the game › Edit › Actions"
+        if self.game.store == "steam":
+            hooked = self.win.steam_state(self.game) == "applied"
+            text = ("Added after the game's own command whenever Steam starts it through QRes — from Steam, "
+                    "or from Playnite through Steam. Your own Steam launch options stay as they are.")
+            if not hooked:
+                text += " They start working once QRes's launch options are applied to Steam."
+            self._set_args(True, text)
+        elif launch.get("type") == "exe":
+            self._set_args(True, "Added after the store's own arguments when QRes GUI starts the game: its "
+                                 "shortcuts and Play. When Playnite starts it, Playnite's own arguments "
+                                 f"apply instead — {playnite_edit}.")
+        elif self.game.store == "playnite" or not launch:
+            self._set_args(False, f"Playnite starts this game, so set its arguments in Playnite: {playnite_edit}.")
+        else:
+            self._set_args(False, f"{self.game.store_label} starts this game itself, so QRes can't add "
+                                  "arguments to it. Set them in the store's own launcher, or in Playnite "
+                                  f"({playnite_edit}) if you start it from there.")
+
+    def _set_args(self, usable: bool, hint: str) -> None:
+        self.extra_args.setVisible(usable)
+        self.args_hint.setText(hint)
 
     def _refresh_steam(self, enabled: bool) -> None:
         appid = self.game.id.split(":", 1)[1]
@@ -545,9 +576,15 @@ class DetailPanel(QScrollArea):
             theme.set_state(self.steam_status, "ok" if enabled else "off",
                             "✓  Steam starts this game through QRes." if enabled else
                             "Steam starts this game through QRes, but switching is off, so nothing changes.")
-        elif state == "outdated":
+        elif state == "outdated" and self.win.steam_hook_missing(self.game):
             theme.set_state(self.steam_status, "warn",
-                            "The launch options point at an older QRes launcher location. Update them.")
+                            "The launch options run a QRes launcher that isn't there any more, so Steam "
+                            "can't start this game. Update them.")
+        elif state == "outdated":
+            target = "your installed QRes GUI" if paths.installed_launcher() else "this copy"
+            theme.set_state(self.steam_status, "warn",
+                            f"The launch options run a different copy of QRes GUI "
+                            f"({steam.hooked_launcher(current)}). Update them to use {target}.")
         elif enabled:
             theme.set_state(self.steam_status, "warn",
                             "Not hooked up yet: Steam will start the game without switching.")
@@ -572,9 +609,6 @@ class DetailPanel(QScrollArea):
 
     def _refresh_shortcuts(self, entry: dict, enabled: bool, watch_needed: bool) -> None:
         launch = entry.get("launch") or self.game.launch or {}
-        # Only games QRes starts itself can take extra arguments; a store URL
-        # hands off to the store, which decides the command line.
-        self.args_form.setVisible(launch.get("type") == "exe" and self.game.store != "manual")
         if launch.get("type") == "exe":
             self.target_label.setText(f"Starts  {launch.get('path', '')}  {config.full_args(entry)}".rstrip())
         elif launch.get("type") == "uri":
@@ -660,7 +694,7 @@ class DetailPanel(QScrollArea):
 
     def _create_shortcut(self, folder: Path) -> None:
         entry = self._ensure_enabled()
-        cmd = paths.launcher_command()
+        cmd = paths.hook_command()
         exe = self.game.exe if self.game.exe and os.path.isfile(self.game.exe) else ""
         path = shortcuts.shortcut_path(folder, self.game.name)
         try:

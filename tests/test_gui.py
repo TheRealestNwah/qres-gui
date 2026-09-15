@@ -254,17 +254,30 @@ def test_hdr_is_greyed_out_when_the_display_cant_do_it(win, monkeypatch):
 
 def test_extra_arguments_for_a_store_game(win):
     select(win, "gog:1453375253")
-    assert not win.detail.args_form.isHidden()
+    assert not win.detail.extra_args.isHidden()
     win.detail.extra_args.setText("  -windowed  ")
     win.detail.extra_args.editingFinished.emit()
     win._save_now()
     assert config.load()["games"]["gog:1453375253"]["extra_args"] == "-windowed"
     assert win.detail.target_label.text().endswith("-windowed")
+    # Said in the open, not only in a tooltip: Playnite starting it uses Playnite's own.
+    assert "Playnite's own arguments" in win.detail.args_hint.text()
 
 
-def test_extra_arguments_are_hidden_where_they_cant_apply(win):
+def test_extra_arguments_are_offered_for_steam_games_too(win):
+    """#13: Steam games had no field at all."""
+    select(win, "steam:10")
+    assert not win.detail.args_box.isHidden() and not win.detail.extra_args.isHidden()
+    assert "from Playnite through Steam" in win.detail.args_hint.text()
+    assert "once QRes's launch options are applied" in win.detail.args_hint.text()   # not hooked yet
+    win.detail.steam_apply.click()
+    assert "once QRes's launch options" not in win.detail.args_hint.text()
+
+
+def test_extra_arguments_say_where_to_set_them_when_qres_cant(win):
     select(win, "playnite:abc")  # Playnite starts it, so QRes never builds the command line
-    assert win.detail.args_form.isHidden()
+    assert win.detail.extra_args.isHidden() and not win.detail.args_box.isHidden()
+    assert "set its arguments in Playnite" in win.detail.args_hint.text()
 
 
 def test_apply_to_steam_keeps_the_users_options(win, env):
@@ -860,6 +873,61 @@ def test_transfer_reports_a_bad_file_without_touching_the_config(win, monkeypatc
     dialog._import()
     assert not dialog.imported and win.cfg["games"] == before
     assert said and "isn't a QRes GUI profile export" in said[0]
+
+
+@pytest.fixture
+def installed(env):
+    """An installed QRes GUI (in the test's own LOCALAPPDATA), while the GUI runs from somewhere else."""
+    folder = paths.installed_folder()
+    folder.mkdir(parents=True)
+    launcher = folder / "QResLauncher.exe"
+    launcher.write_bytes(b"MZ")
+    return launcher
+
+
+def test_another_copy_sees_hooks_to_the_installed_copy_as_fine(installed, env):
+    """#12: an unzipped or test copy used to call these "outdated" and offer to repoint them at itself."""
+    env["steam"].options["10"] = steam.apply_ours("-novid", steam.launch_prefix([str(installed)], "steam:10"))
+    cfg = config.load()
+    cfg["games"]["steam:10"] = {"name": "Counter Test", "store": "steam", "enabled": True,
+                                "width": 2560, "height": 1440, "refresh": 0}
+    config.save(cfg)
+    window = main_window.MainWindow()
+    try:
+        assert row(window, "steam:10")[3] == "Steam launch options"
+        assert window.pending_steam_updates() == {}
+        assert window.steam_prefix("steam:10").startswith(f'"{installed}"')
+    finally:
+        window.close()
+
+
+def test_a_hook_to_a_deleted_copy_is_called_broken_and_fixed_to_the_installed_one(installed, env, tmp_path):
+    gone = tmp_path / "Desktop" / "qRes UI" / "1.4.0" / "QResLauncher.exe"      # deleted after testing
+    env["steam"].options["10"] = steam.apply_ours("", steam.launch_prefix([str(gone)], "steam:10"))
+    cfg = config.load()
+    cfg["games"]["steam:10"] = {"name": "Counter Test", "store": "steam", "enabled": True,
+                                "width": 2560, "height": 1440, "refresh": 0}
+    config.save(cfg)
+    window = main_window.MainWindow()
+    try:
+        assert row(window, "steam:10")[3] == "Launch options broken — update them"
+        select(window, "steam:10")
+        assert "isn't there any more" in window.detail.steam_status.text()
+        assert steam.hooked_launcher(window.pending_steam_updates()["10"]) == str(installed)
+    finally:
+        window.close()
+
+
+def test_settings_says_when_this_copy_isnt_the_one_games_launch_through(installed, win):
+    dialog = SettingsDialog(win, win.cfg, win.modes)
+    hints = [label.text() for label in dialog.findChildren(main_window.QLabel)]
+    assert any("isn't the installed QRes GUI" in text for text in hints)
+
+
+def test_settings_warns_a_portable_copy_not_to_move_its_folder(win):
+    dialog = SettingsDialog(win, win.cfg, win.modes)
+    hints = [label.text() for label in dialog.findChildren(main_window.QLabel)]
+    assert any("Don't move or delete it" in text for text in hints)
 
 
 def _import_through_dialog(win, monkeypatch, path, merge=False):

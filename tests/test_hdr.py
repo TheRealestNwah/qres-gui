@@ -154,7 +154,7 @@ def test_the_session_record_holds_the_desktop_hdr_state(monkeypatch, fake_hdr):
     _profile(hdr=True)
     while_running = {}
     monkeypatch.setattr(launcher, "_start_command",
-                        lambda cmd: while_running.update(session.read() or {}) or subprocess.Popen(cmd))
+                        lambda cmd, extra="": while_running.update(session.read() or {}) or subprocess.Popen(cmd))
     launcher.run("steam:1", _sleep_cmd(0.2))
     assert while_running["original_hdr"] is False
     assert while_running["original"] == DESKTOP.to_dict()
