@@ -6,6 +6,15 @@ it has been proven on real hardware.
 
 ## Unreleased
 
+### Added
+- **Hide games from the list** ([#10](https://github.com/TheRealestNwah/qres-gui/issues/10)):
+  right-click a game › **Hide from list**. Only the list changes — a hidden game
+  keeps its profile and still switches when started. While anything is hidden,
+  the line under the list says how many, with a **Show** link; hidden games then
+  appear greyed with *(hidden)*, and right-click › **Show in list** brings one
+  back. Nothing is added to the window when nothing is hidden. Backups carry
+  the hidden list.
+
 ### Changed
 - **Extra arguments work for Steam games, including ones started from
   Playnite** ([#13](https://github.com/TheRealestNwah/qres-gui/issues/13)).

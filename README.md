@@ -81,6 +81,12 @@ How the launcher gets in the loop depends on the store:
 For non-Steam games, start the game from the `… (QRes)` shortcut (or **Play**),
 not from the store's own button. The store can't be told to go through the launcher.
 
+Games you never want to see — tools, soundtracks, things you've finished — can
+be taken out of the list: right-click › **Hide from list**. Hiding only tidies
+the list; a hidden game keeps its profile and still switches when you start it.
+While anything is hidden, the line under the list says how many, with a
+**Show** link to bring them back (right-click › **Show in list**).
+
 ### Playnite
 
 **Settings › Playnite integration… › Add to Playnite** adds a short block to

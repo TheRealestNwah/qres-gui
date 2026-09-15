@@ -57,6 +57,11 @@ def test_export_leaves_out_everything_about_this_pc(two_screens, cfg):
         assert local not in data["settings"]
 
 
+def test_hidden_games_travel_with_the_settings(two_screens, cfg):
+    cfg["hidden_games"] = ["gog:99"]
+    assert transfer.export_data(cfg)["settings"]["hidden_games"] == ["gog:99"]
+
+
 def test_export_drops_a_store_games_launch_and_install_dir(two_screens, cfg):
     """A rescan rewrites both from the store, so carrying them is wrong and pointless."""
     saved = transfer.export_data(cfg)["games"]["steam:620"]

@@ -156,6 +156,53 @@ def test_filters(win):
     assert all(item.isHidden() for item in win.items.values())
 
 
+def shown(win):
+    return {g for g, item in win.items.items() if not item.isHidden()}
+
+
+def test_right_click_hides_a_game_and_says_how_to_get_it_back(win):
+    """#10. The menu is built and its action triggered, rather than shown (which would block)."""
+    [hide] = win.game_menu("legendary:Quail").actions()
+    assert hide.text() == "Hide from list"
+    hide.trigger()
+    assert "legendary:Quail" not in shown(win)
+    assert config.load()["hidden_games"] == ["legendary:Quail"]
+    assert "1 hidden" in win.summary.text() and "Show" in win.summary.text()
+    assert "still switches" in win.statusBar().currentMessage()
+
+
+def test_hidden_games_come_back_through_the_link_under_the_list(win):
+    win.set_hidden("legendary:Quail", True)
+    win.summary.linkActivated.emit("hidden")               # "Show"
+    assert "legendary:Quail" in shown(win)
+    assert row(win, "legendary:Quail")[0].endswith("(hidden)")
+    assert "Hide them again" in win.summary.text()
+    [show] = win.game_menu("legendary:Quail").actions()    # right-click › Show in list
+    assert show.text() == "Show in list"
+    show.trigger()
+    assert row(win, "legendary:Quail")[0] == "Hogwarts Legacy"
+    assert win.summary.text() == "4 of 4 games shown · 0 switch resolution"   # the link goes with the last one
+
+
+def test_the_hidden_link_only_appears_when_something_is_hidden(win):
+    assert "hidden" not in win.summary.text()
+
+
+def test_hiding_a_game_leaves_its_profile_alone(win):
+    """A list filter, not a disable: a hidden game still switches when it's started."""
+    win.cfg["games"]["steam:10"] = {"name": "Counter Test", "store": "steam", "enabled": True,
+                                    "width": 2560, "height": 1440, "refresh": 0}
+    before = dict(win.cfg["games"]["steam:10"])
+    win.set_hidden("steam:10", True)
+    assert config.load()["games"]["steam:10"] == before
+
+
+def test_hidden_games_stay_hidden_under_the_other_filters(win):
+    win.set_hidden("steam:10", True)
+    win.store_filter.setCurrentIndex(win.store_filter.findData("steam"))
+    assert shown(win) == set()
+
+
 # --- the detail panel ---------------------------------------------------------------
 
 def test_enabling_switching_creates_a_profile(win):

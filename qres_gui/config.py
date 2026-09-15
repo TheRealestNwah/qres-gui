@@ -43,6 +43,9 @@ DEFAULTS: dict = {
     "tray_icon": True,        # show a system-tray icon
     "background": False,      # keep running in the tray when the window is closed
     "restore_hotkey": "",     # global hotkey for "Restore desktop resolution"
+    # games hidden from the list (ids). Only a list filter: a hidden game keeps
+    # its profile and still switches when launched.
+    "hidden_games": [],
     "games": {},
 }
 
