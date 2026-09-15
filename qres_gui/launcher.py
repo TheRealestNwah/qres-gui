@@ -103,7 +103,12 @@ def run(game_id: str, command: list[str]) -> int:
     cfg = config.load()
     entry = cfg.get("games", {}).get(game_id) or {}
     if command:
-        start = lambda: _start_command(command)
+        # Steam's command for the game (its %command%), plus the profile's own
+        # extra arguments. Adding them here rather than in the launch options
+        # means they apply however Steam was asked to start the game - Playnite
+        # included - and changing them never needs Steam closed.
+        extra = (entry.get("extra_args") or "").strip()
+        start = lambda: _start_command(command, extra)
     elif entry.get("launch"):
         start = lambda: _start_target(entry["launch"], config.full_args(entry))
     else:
@@ -343,16 +348,24 @@ class _CloseGameWithUs:
 
 # --- starting the game -----------------------------------------------------
 
-def _start_command(command: list[str]) -> subprocess.Popen | int:
+def _start_command(command: list[str], extra: str = "") -> subprocess.Popen | int:
+    """Start `command`, with `extra` - a command-line fragment, typed as the user would - on the end.
+
+    `extra` is added verbatim rather than split into arguments: it's already
+    Windows command-line text, quotes and all, and re-quoting it would change it.
+    """
+    if extra:
+        log.info("adding the profile's extra arguments: %s", extra)
     try:
-        return subprocess.Popen(command)
+        return subprocess.Popen(f"{subprocess.list2cmdline(command)} {extra}" if extra else command)
     except FileNotFoundError:
         raise LaunchError(f"{command[0]} doesn't exist. Check the game's launch options.") from None
     except OSError as exc:
         if getattr(exc, "winerror", None) != ERROR_ELEVATION_REQUIRED:
             raise
     log.info("%s needs administrator rights; starting it through ShellExecute", command[0])
-    return _shell_execute(command[0], subprocess.list2cmdline(command[1:]), os.getcwd())
+    args = " ".join(part for part in (subprocess.list2cmdline(command[1:]), extra) if part)
+    return _shell_execute(command[0], args, os.getcwd())
 
 
 def _start_target(launch: dict, args: str | None = None) -> subprocess.Popen | int | None:

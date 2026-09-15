@@ -207,17 +207,30 @@ def test_hdr_is_greyed_out_when_the_display_cant_do_it(win, monkeypatch):
 
 def test_extra_arguments_for_a_store_game(win):
     select(win, "gog:1453375253")
-    assert not win.detail.args_form.isHidden()
+    assert not win.detail.extra_args.isHidden()
     win.detail.extra_args.setText("  -windowed  ")
     win.detail.extra_args.editingFinished.emit()
     win._save_now()
     assert config.load()["games"]["gog:1453375253"]["extra_args"] == "-windowed"
     assert win.detail.target_label.text().endswith("-windowed")
+    # Said in the open, not only in a tooltip: Playnite starting it uses Playnite's own.
+    assert "Playnite's own arguments" in win.detail.args_hint.text()
 
 
-def test_extra_arguments_are_hidden_where_they_cant_apply(win):
+def test_extra_arguments_are_offered_for_steam_games_too(win):
+    """#13: Steam games had no field at all."""
+    select(win, "steam:10")
+    assert not win.detail.args_box.isHidden() and not win.detail.extra_args.isHidden()
+    assert "from Playnite through Steam" in win.detail.args_hint.text()
+    assert "once QRes's launch options are applied" in win.detail.args_hint.text()   # not hooked yet
+    win.detail.steam_apply.click()
+    assert "once QRes's launch options" not in win.detail.args_hint.text()
+
+
+def test_extra_arguments_say_where_to_set_them_when_qres_cant(win):
     select(win, "playnite:abc")  # Playnite starts it, so QRes never builds the command line
-    assert win.detail.args_form.isHidden()
+    assert win.detail.extra_args.isHidden() and not win.detail.args_box.isHidden()
+    assert "set its arguments in Playnite" in win.detail.args_hint.text()
 
 
 def test_apply_to_steam_keeps_the_users_options(win, env):

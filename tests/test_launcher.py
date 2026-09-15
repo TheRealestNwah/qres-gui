@@ -49,6 +49,28 @@ def test_returns_game_exit_code():
     assert launcher.run("steam:1", [sys.executable, "-c", "raise SystemExit(3)"]) == 3
 
 
+def _argv_recorder(out) -> list[str]:
+    """A 'game' that writes the arguments it was started with to `out`."""
+    return [sys.executable, "-c",
+            f"import json, sys; open({str(out)!r}, 'w').write(json.dumps(sys.argv[1:]))", "-steamarg"]
+
+
+def test_extra_arguments_reach_a_game_steam_starts(tmp_path):
+    """#13: Steam's %command% arrives as the command; the profile's extras go on the end, quotes intact."""
+    cfg = config.load()
+    cfg["games"]["steam:1"] = {"enabled": False, "extra_args": '-windowed -name "two words"', "watch": []}
+    config.save(cfg)
+    out = tmp_path / "argv.json"
+    assert launcher.run("steam:1", _argv_recorder(out)) == 0
+    assert json.loads(out.read_text()) == ["-steamarg", "-windowed", "-name", "two words"]
+
+
+def test_no_extra_arguments_leaves_steams_command_exactly_as_it_was(tmp_path):
+    out = tmp_path / "argv.json"
+    assert launcher.run("steam:1", _argv_recorder(out)) == 0
+    assert json.loads(out.read_text()) == ["-steamarg"]
+
+
 def test_no_switch_when_target_is_desktop_mode(monkeypatch):
     current = display.current_mode()
     cfg = config.load()
@@ -76,7 +98,7 @@ def test_switch_and_restore_are_paired(monkeypatch):
 
     seen_session = {}
 
-    def fake_start(command):
+    def fake_start(command, extra=""):
         seen_session.update(session.read() or {})
         return subprocess.Popen(command)
 
