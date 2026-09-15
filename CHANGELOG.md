@@ -19,6 +19,22 @@ it has been proven on real hardware.
   directly, where to set them instead (Playnite's Edit › Actions) rather than
   offering a field that would be ignored. It used to be a tooltip.
 
+### Fixed
+- **Running a copy of QRes GUI that isn't the installed one no longer takes
+  over your games' hooks** ([#12](https://github.com/TheRealestNwah/qres-gui/issues/12)).
+  An unzipped download or a test build used to call every Steam launch option
+  and Playnite script "outdated" and offer to point them at itself — and once
+  that folder was deleted, those games stopped launching from Steam. Steam,
+  Playnite and shortcuts now always use the installed copy when there is one,
+  whichever copy is open; only with nothing installed do they point at the copy
+  you're running, and **Settings › Launcher** says so.
+- Launch options that run a QRes launcher which has since been deleted are
+  called **broken** rather than just "need updating", since Steam can't start
+  those games at all.
+- **Diagnostics** said "installed build" for any packaged copy, including one
+  in Downloads. It now tells an installed copy from an unzipped one, and shows
+  which launcher games actually go through.
+
 ## 1.5.0 — 2026-09-14
 
 Checked on a real PC: exporting, restoring a backup over changes made since
