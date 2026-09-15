@@ -4,6 +4,21 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
+## Unreleased
+
+### Changed
+- **Extra arguments work for Steam games, including ones started from
+  Playnite** ([#13](https://github.com/TheRealestNwah/qres-gui/issues/13)).
+  Steam games had no field at all. Now the launcher adds a game's extra
+  arguments after Steam's own command whenever Steam starts it through QRes,
+  so they apply whether you start it from Steam or from Playnite, your own
+  Steam launch options stay as they are, and changing them doesn't need Steam
+  closed.
+- Extra arguments have their own box in the game panel, which says in the
+  open where they apply for that game — and, for games Playnite starts
+  directly, where to set them instead (Playnite's Edit › Actions) rather than
+  offering a field that would be ignored. It used to be a tooltip.
+
 ## 1.5.0 — 2026-09-14
 
 Checked on a real PC: exporting, restoring a backup over changes made since

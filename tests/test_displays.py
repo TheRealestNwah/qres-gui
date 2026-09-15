@@ -88,7 +88,7 @@ def test_the_session_record_names_the_display(switches, monkeypatch):
     _profile(display=SECOND.device)
     while_running = {}
     monkeypatch.setattr(launcher, "_start_command",
-                        lambda cmd: while_running.update(session.read() or {}) or subprocess.Popen(cmd))
+                        lambda cmd, extra="": while_running.update(session.read() or {}) or subprocess.Popen(cmd))
     launcher.run("steam:1", _sleep_cmd(0.2))
     assert while_running["device"] == SECOND.device
     assert while_running["original"] == MODE_OF[SECOND.device].to_dict()
@@ -98,7 +98,7 @@ def test_a_primary_profile_leaves_the_device_out_of_the_record(switches, monkeyp
     _profile()
     while_running = {}
     monkeypatch.setattr(launcher, "_start_command",
-                        lambda cmd: while_running.update(session.read() or {}) or subprocess.Popen(cmd))
+                        lambda cmd, extra="": while_running.update(session.read() or {}) or subprocess.Popen(cmd))
     launcher.run("steam:1", _sleep_cmd(0.2))
     assert "device" not in while_running
 

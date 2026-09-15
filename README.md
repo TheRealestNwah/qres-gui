@@ -149,19 +149,21 @@ it re-sync.
 
 ### Custom launch arguments
 
-For store games QRes GUI starts itself (GOG, EA, Amazon, standalone), the
-**Launching** box has an **Extra arguments** field — `-windowed`, `-skipintro`
-and the like. They go after whatever arguments the store already uses, and a
-rescan that refreshes the store's own launch details leaves them alone.
+A game's **Extra arguments** box takes `-windowed`, `-skipintro` and the like.
+Where they apply depends on what starts the game, and the box says which:
 
-They apply when **QRes GUI** starts the game: from a shortcut it created, or
-from **Play**. They don't apply when the store's own client or Playnite starts
-it — those build the command line themselves, so put the arguments there
-instead. Hand-added games have a full **Arguments** field of their own, since
-there's no store command line to add to.
+- **Steam games:** added after the game's own command whenever Steam starts it
+  through QRes — from Steam, or from Playnite through Steam. Your own Steam
+  launch options are kept, and changing the arguments doesn't need Steam closed.
+- **Games QRes GUI starts itself** (GOG, EA, Amazon, standalone): added after
+  the store's own arguments when a shortcut QRes made, or **Play**, starts it.
+  A rescan that refreshes the store's launch details leaves them alone.
+- **Games Playnite starts directly:** Playnite builds that command line, so set
+  arguments there (right-click the game › Edit › Actions); the box says so
+  instead of offering a field that would be ignored.
 
-Steam is deliberately left out: put those in Steam's own *Launch options*, where
-they already sit next to the QRes hook.
+Hand-added games have a full **Arguments** field of their own, since there's no
+store command line to add to.
 
 ### Quick resolution switching
 
@@ -330,9 +332,9 @@ Layout:
 - HDR needs Windows 10 1709 or newer and a display Windows reports as
   HDR-capable; where it isn't available the control says so and stays greyed
   out. Switching it blanks the display briefly while it re-syncs.
-- **Extra arguments** only apply when QRes GUI starts the game (a shortcut it
-  made, or **Play**), not when the store's client or Playnite does. Steam games
-  use Steam's own launch options instead.
+- **Extra arguments** apply when QRes starts the game: through Steam's launch
+  options (from Steam or Playnite), a shortcut it made, or **Play**. A game
+  Playnite or a store's client starts directly gets that tool's own arguments.
 - Games from any store work through Playnite: start one there once and it
   appears in QRes GUI, ready to set up.
 - Heroic, Amazon Games, standalone legendary / nile, EA app, Battle.net and

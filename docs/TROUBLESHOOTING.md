@@ -166,12 +166,18 @@ HDR changes.
 
 ## Extra arguments aren't being used
 
-They only apply when QRes GUI starts the game: from a shortcut it created, or
-from **Play**. The store's own client and Playnite build their own command
-lines, so starting the game there skips the extra arguments — put them in that
-launcher's per-game settings instead. For Steam games there's no field at all:
-those go in Steam's *Properties › General › Launch options*, after the QRes
-hook.
+The game's **Extra arguments** box says where they apply for that game. In short:
+
+- **Steam games** get them whenever Steam starts the game through QRes, so the
+  QRes launch options have to be applied (the box says if they aren't yet).
+  `launcher.log` shows `adding the profile's extra arguments` for each launch.
+- **Other store games** get them only when QRes GUI starts the game — a
+  shortcut it created, or **Play**. Starting it from the store's own client or
+  from Playnite skips them, because those build the command line themselves.
+  Put the arguments in that tool instead (Playnite: right-click the game › Edit
+  › Actions).
+- Some games ignore arguments they don't know. Check the game's own
+  documentation or PCGamingWiki for what it accepts.
 
 ## QRes.exe isn't found
 
