@@ -4,6 +4,17 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
+## Unreleased
+
+### Added
+- **Hide games from the list** ([#10](https://github.com/TheRealestNwah/qres-gui/issues/10)):
+  right-click a game › **Hide from list**. Only the list changes — a hidden game
+  keeps its profile and still switches when started. While anything is hidden,
+  the line under the list says how many, with a **Show** link; hidden games then
+  appear greyed with *(hidden)*, and right-click › **Show in list** brings one
+  back. Nothing is added to the window when nothing is hidden. Backups carry
+  the hidden list.
+
 ## 1.5.0 — 2026-09-14
 
 Checked on a real PC: exporting, restoring a backup over changes made since

@@ -41,6 +41,7 @@ KIND = "qres-gui-profiles"
 PORTABLE_SETTINGS = (
     "temporary", "switch_delay", "restore_delay", "default_target",
     "check_updates", "tray_icon", "background", "restore_hotkey",
+    "hidden_games",   # store ids, so they mean the same games on any PC
 )
 
 # A game profile's portable half. "launch" rides along for manual games only,

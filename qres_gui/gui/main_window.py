@@ -11,7 +11,7 @@ from PySide6.QtCore import QFileInfo, QRect, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QBrush, QColor, QDesktopServices, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFileIconProvider, QFrame, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QMainWindow, QMessageBox, QPushButton, QSplitter, QStatusBar, QTreeWidget,
+    QLineEdit, QMainWindow, QMenu, QMessageBox, QPushButton, QSplitter, QStatusBar, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -59,6 +59,7 @@ class MainWindow(QMainWindow):
         self._quitting = False
         self._told_tray = False
         self._last_mode_str = ""
+        self._show_hidden = False     # the "N hidden · Show" link under the list
 
         self._init_defaults()
         self._build_ui()
@@ -150,8 +151,12 @@ class MainWindow(QMainWindow):
         for column in (1, 2, 3):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         self.tree.currentItemChanged.connect(self._on_select)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._game_menu)
         lv.addWidget(self.tree, 1)
         self.summary = QLabel(objectName="muted")
+        # Holds the "N hidden · Show" link, which only appears while a game is hidden.
+        self.summary.linkActivated.connect(lambda _: self.set_show_hidden(not self._show_hidden))
         lv.addWidget(self.summary)
 
         self.detail = DetailPanel(self)
@@ -636,7 +641,10 @@ class MainWindow(QMainWindow):
         item = self.items[game.id]
         entry = self.cfg["games"].get(game.id)
         enabled = bool(entry and entry.get("enabled"))
-        item.setText(0, game.name)
+        # Only ever on screen while "Show" is on, so it's worth saying which ones they are.
+        hidden = game.id in self.hidden_ids()
+        item.setText(0, f"{game.name}  (hidden)" if hidden else game.name)
+        item.setData(0, Qt.ItemDataRole.ForegroundRole, QBrush(QColor(theme.MUTED)) if hidden else None)
         item.setText(1, game.store_label)
         item.setForeground(1, QBrush(QColor(theme.STORE_COLORS.get(game.store, theme.MUTED))))
         target = f"{entry['width']} × {entry['height']}" if enabled else "—"
@@ -704,6 +712,7 @@ class MainWindow(QMainWindow):
         needle = self.search.text().strip().casefold()
         store = self.store_filter.currentData()
         only = self.only_configured.isChecked()
+        hidden = self.hidden_ids()
         shown = 0
         for gid, item in self.items.items():
             game = self.games[gid]
@@ -712,11 +721,56 @@ class MainWindow(QMainWindow):
                 (not needle or needle in game.name.casefold())
                 and (store is None or game.store == store)
                 and (not only or bool(entry and entry.get("enabled")))
+                and (self._show_hidden or gid not in hidden)
             )
             item.setHidden(not visible)
             shown += visible
         enabled = sum(1 for g in self.games if (self.cfg["games"].get(g) or {}).get("enabled"))
-        self.summary.setText(f"{shown} of {len(self.items)} games shown · {enabled} switch resolution")
+        text = f"{shown} of {len(self.items)} games shown · {enabled} switch resolution"
+        count = sum(1 for gid in self.items if gid in hidden)
+        if count:
+            link = "Hide them again" if self._show_hidden else "Show"
+            text = html.escape(text) + f" · {count} hidden — <a href='hidden'>{link}</a>"
+        elif self._show_hidden:
+            self._show_hidden = False   # nothing left to show
+        self.summary.setText(text)
+
+    # --- hiding games from the list ------------------------------------------
+
+    def hidden_ids(self) -> set[str]:
+        return set(self.cfg.get("hidden_games") or [])
+
+    def set_hidden(self, game_id: str, hide: bool) -> None:
+        """Hide a game from the list, or bring it back. Its profile and switching are untouched."""
+        ids = [gid for gid in (self.cfg.get("hidden_games") or []) if gid != game_id]
+        if hide:
+            ids.append(game_id)
+        self.cfg["hidden_games"] = ids
+        self._save_now()
+        if game_id in self.games:
+            self._fill_row(self.games[game_id])
+        self._apply_filter()
+        name = self.games[game_id].name if game_id in self.games else game_id
+        self.statusBar().showMessage(
+            f"Hid {name}. It still switches when you start it; “Show” under the list brings it back."
+            if hide else f"{name} is back in the list.", 8000)
+
+    def set_show_hidden(self, show: bool) -> None:
+        self._show_hidden = show
+        self._apply_filter()
+
+    def _game_menu(self, pos) -> None:
+        item = self.tree.itemAt(pos)
+        if item is not None:
+            self.game_menu(item.data(0, ROLE_ID)).exec(self.tree.viewport().mapToGlobal(pos))
+
+    def game_menu(self, game_id: str) -> QMenu:
+        """The right-click menu for a game in the list."""
+        hidden = game_id in self.hidden_ids()
+        menu = QMenu(self)
+        action = menu.addAction("Show in list" if hidden else "Hide from list")
+        action.triggered.connect(lambda: self.set_hidden(game_id, not hidden))
+        return menu
 
     def _on_select(self, current: QTreeWidgetItem | None, _previous) -> None:
         game = self.games.get(current.data(0, ROLE_ID)) if current else None
