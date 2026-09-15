@@ -103,11 +103,12 @@ def run(game_id: str, command: list[str]) -> int:
     cfg = config.load()
     entry = cfg.get("games", {}).get(game_id) or {}
     if command:
-        # Steam's command for the game (its %command%), plus the profile's own
-        # extra arguments. Adding them here rather than in the launch options
-        # means they apply however Steam was asked to start the game - Playnite
-        # included - and changing them never needs Steam closed.
-        extra = (entry.get("extra_args") or "").strip()
+        # Steam's command for the game (its %command%), plus what the profile
+        # adds - engine options and the user's own extra arguments. Adding them
+        # here rather than in the launch options means they apply however Steam
+        # was asked to start the game, Playnite included, and changing them
+        # never needs Steam closed.
+        extra = config.extra_args(entry)
         start = lambda: _start_command(command, extra)
     elif entry.get("launch"):
         start = lambda: _start_target(entry["launch"], config.full_args(entry))

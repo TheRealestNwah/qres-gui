@@ -65,6 +65,17 @@ def test_extra_arguments_reach_a_game_steam_starts(tmp_path):
     assert json.loads(out.read_text()) == ["-steamarg", "-windowed", "-name", "two words"]
 
 
+def test_engine_options_reach_a_game_steam_starts_before_the_typed_ones(tmp_path):
+    """#14: the engine toggles ride the same path as extra arguments, and go first."""
+    cfg = config.load()
+    cfg["games"]["steam:1"] = {"enabled": False, "engine_args": {"engine": "unity", "window": "windowed"},
+                               "extra_args": "-typed", "watch": []}
+    config.save(cfg)
+    out = tmp_path / "argv.json"
+    assert launcher.run("steam:1", _argv_recorder(out)) == 0
+    assert json.loads(out.read_text()) == ["-steamarg", "-screen-fullscreen", "0", "-typed"]
+
+
 def test_no_extra_arguments_leaves_steams_command_exactly_as_it_was(tmp_path):
     out = tmp_path / "argv.json"
     assert launcher.run("steam:1", _argv_recorder(out)) == 0

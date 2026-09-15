@@ -287,6 +287,37 @@ def test_extra_arguments_are_offered_for_steam_games_too(win):
     assert "once QRes's launch options" not in win.detail.args_hint.text()
 
 
+def _make_unity(env):
+    folder = env["tmp"] / "steamgame"          # steam:10's install folder in the fake store
+    folder.mkdir(exist_ok=True)
+    (folder / "UnityPlayer.dll").write_bytes(b"MZ")
+
+
+def test_a_unity_game_offers_its_engines_options(win, env):
+    """#14: toggles from Unity's documented flags, for a game whose folder shows it's Unity."""
+    _make_unity(env)
+    select(win, "steam:10")
+    assert win.detail.engine_note.text() == "Unity options" and not win.detail.engine_note.isHidden()
+    assert set(win.detail.engine_combos) == {"window", "api", "monitor"}
+    monitors = win.detail.engine_combos["monitor"]
+    assert [monitors.itemText(i) for i in range(monitors.count())] == ["Game's choice", "Monitor 1", "Monitor 2"]
+
+    window = win.detail.engine_combos["window"]
+    window.setCurrentIndex(window.findData("borderless"))
+    win._save_now()
+    assert config.load()["games"]["steam:10"]["engine_args"] == {"engine": "unity", "window": "borderless"}
+    assert "Adds: -screen-fullscreen 1 -window-mode borderless" in win.detail.engine_adds.text()
+
+    window.setCurrentIndex(0)                      # back to "Game's choice"
+    win._save_now()
+    assert "engine_args" not in config.load()["games"]["steam:10"]
+
+
+def test_no_engine_options_for_a_game_whose_engine_isnt_known(win):
+    select(win, "steam:10")                        # its folder doesn't exist in the fake store
+    assert win.detail.engine_note.isHidden() and not win.detail.engine_combos
+
+
 def test_extra_arguments_say_where_to_set_them_when_qres_cant(win):
     select(win, "playnite:abc")  # Playnite starts it, so QRes never builds the command line
     assert win.detail.extra_args.isHidden() and not win.detail.args_box.isHidden()

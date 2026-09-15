@@ -57,6 +57,23 @@ def test_export_leaves_out_everything_about_this_pc(two_screens, cfg):
         assert local not in data["settings"]
 
 
+def test_engine_options_travel_with_a_profile(two_screens, cfg, tmp_path):
+    cfg["games"]["steam:620"]["engine_args"] = {"engine": "unity", "api": "d3d12"}
+    data = transfer.read_export(transfer.write_export(cfg, tmp_path / "out.json"))
+    assert data["games"]["steam:620"]["engine_args"] == {"engine": "unity", "api": "d3d12"}
+    target = {}
+    transfer.merge(target, data)
+    assert target["games"]["steam:620"]["engine_args"] == {"engine": "unity", "api": "d3d12"}
+
+
+def test_a_damaged_engine_options_entry_is_dropped(two_screens):
+    data = {"kind": transfer.KIND, "format": 1,
+            "games": {"steam:1": {"name": "X", "store": "steam", "engine_args": "not a dict"}}}
+    target = {}
+    transfer.merge(target, data)
+    assert "engine_args" not in target["games"]["steam:1"]
+
+
 def test_hidden_games_travel_with_the_settings(two_screens, cfg):
     cfg["hidden_games"] = ["gog:99"]
     assert transfer.export_data(cfg)["settings"]["hidden_games"] == ["gog:99"]
