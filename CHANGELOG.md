@@ -6,6 +6,9 @@ it has been proven on real hardware.
 
 ## 1.5.0 — 2026-09-14
 
+Checked on a real PC: exporting, restoring a backup over changes made since
+(including a game set up after it), and importing a damaged file.
+
 ### Added
 - **Back up and restore profiles** (Settings › Profiles › **Back up and
   restore…**). Export your game profiles, presets and settings to a file, and
