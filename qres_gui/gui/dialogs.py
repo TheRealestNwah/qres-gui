@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from .. import __version__, display, notify, paths, playnite
+from .. import __version__, diagnostics, display, notify, paths, playnite
 from . import theme
 
 
@@ -35,6 +35,10 @@ def _left(widget: QWidget) -> QHBoxLayout:
     return row
 
 
+def _copy_to_clipboard(text: str) -> None:
+    QApplication.clipboard().setText(text)
+
+
 def licenses_folder():
     """This program's and its third-party components' license texts."""
     return paths.app_folder() / "licenses"
@@ -50,7 +54,7 @@ def _hint(text: str) -> QLabel:
 
 class SettingsDialog(QDialog):
     def __init__(self, parent, cfg: dict, modes: list[display.Mode], on_remove_hooks=None, on_playnite=None,
-                 on_check_updates=None, on_guide=None):
+                 on_check_updates=None, on_guide=None, on_diagnostics=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(700)
@@ -150,6 +154,8 @@ class SettingsDialog(QDialog):
             # Close Settings first, so its (now stale) fields can't overwrite the guide's choices.
             row.addWidget(QPushButton("Getting started…", clicked=lambda: (self.reject(), on_guide())))
         row.addWidget(QPushButton("Troubleshooting", clicked=lambda: QDesktopServices.openUrl(QUrl(TROUBLESHOOTING))))
+        if on_diagnostics:
+            row.addWidget(QPushButton("Diagnostics…", clicked=on_diagnostics))
         row.addStretch()
         form.addRow("Help", row)
 
@@ -304,7 +310,47 @@ class PlayniteDialog(QDialog):
         self._refresh()
 
     def _copy(self, text: str) -> None:
-        QApplication.clipboard().setText(text)
+        _copy_to_clipboard(text)
+
+
+
+class DiagnosticsDialog(QDialog):
+    """Everything QRes GUI can see about this PC, for reading or for pasting into a bug report."""
+
+    def __init__(self, parent, cfg: dict | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("Diagnostics")
+        self.setMinimumWidth(720)
+        self.sections = diagnostics.report(cfg)
+        self.text = diagnostics.as_text(self.sections)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.addWidget(_hint("What QRes GUI can see right now. Nothing here is sent anywhere - "
+                               "Copy puts it on the clipboard so you can paste it into a bug report."))
+        for section in self.sections:
+            layout.addWidget(QLabel(section.title, objectName="caption"))
+            form = QFormLayout()
+            form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+            for row in section.rows:
+                value = QLabel(row.value, wordWrap=True)
+                if not row.ok:
+                    # The rows worth reading first are the ones that went wrong.
+                    value.setObjectName("warning")
+                form.addRow(f"{row.label}:", value)
+            layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        copy = QPushButton("Copy for a bug report", objectName="primary",
+                           clicked=lambda: self._copy_report(copy))
+        buttons.addButton(copy, QDialogButtonBox.ButtonRole.ActionRole)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _copy_report(self, button: QPushButton) -> None:
+        _copy_to_clipboard(self.text)
+        button.setText("Copied")
+        QTimer.singleShot(1500, lambda: button.setText("Copy for a bug report"))
 
 
 class AddGameDialog(QDialog):

@@ -41,6 +41,7 @@ QPushButton#presetActive {{
 QPushButton#presetActive:hover {{ background: #6f9cf2; }}
 QLabel#muted {{ color: {MUTED}; }}
 QLabel#caption {{ color: {MUTED}; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }}
+QLabel#warning {{ color: {WARN}; }}
 QLabel#desktopMode {{ font-size: 17px; font-weight: 600; }}
 QLabel#title {{ font-size: 21px; font-weight: 700; }}
 QGroupBox {{

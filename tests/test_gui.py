@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from qres_gui import (__version__, config, display, hdr, notify, paths, playnite, session, shortcuts,
                       updates)
 from qres_gui.gui import main_window, theme
-from qres_gui.gui.dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
+from qres_gui.gui.dialogs import AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog
 from qres_gui.stores import Game, steam
 
 MODES = [display.Mode(3440, 1440, 165), display.Mode(3440, 1440, 60), display.Mode(2560, 1440, 165),
@@ -715,6 +715,41 @@ def test_settings_opens_the_guide(win):
     [button] = [b for b in dialog.findChildren(main_window.QPushButton) if b.text() == "Getting started…"]
     button.click()
     assert opened == [True] and dialog.result() == 0  # Settings closed without applying
+
+
+def test_settings_opens_diagnostics(win):
+    opened = []
+    dialog = SettingsDialog(win, win.cfg, win.modes, on_diagnostics=lambda: opened.append(True))
+    [button] = [b for b in dialog.findChildren(main_window.QPushButton) if b.text() == "Diagnostics…"]
+    button.click()
+    assert opened == [True]
+
+
+def test_diagnostics_dialog_shows_both_screens_and_copies(win):
+    from PySide6.QtWidgets import QApplication
+    dialog = DiagnosticsDialog(win, win.cfg)
+    titles = [s.title for s in dialog.sections]
+    assert "Displays" in titles and "HDR" in titles
+
+    screens = [row.label for s in dialog.sections if s.title == "Displays" for row in s.rows]
+    assert screens == [PRIMARY.label, SECOND.label]
+
+    [copy] = [b for b in dialog.findChildren(main_window.QPushButton)
+              if b.text() == "Copy for a bug report"]
+    copy.click()
+    assert QApplication.clipboard().text() == dialog.text
+    assert __version__ in dialog.text and copy.text() == "Copied"
+
+
+def test_diagnostics_never_checks_for_updates(win, monkeypatch):
+    """Opening the panel must not touch the network; the last result comes from the config."""
+    monkeypatch.setattr(updates, "fetch_releases",
+                        lambda *a, **k: pytest.fail("diagnostics went to the network"))
+    win.cfg["update_last_check"] = 1_700_000_000
+    win.cfg["update_available"] = {"version": "9.9.9", "url": "https://example.invalid"}
+    dialog = DiagnosticsDialog(win, win.cfg)
+    [section] = [s for s in dialog.sections if s.title == "Updates"]
+    assert "9.9.9" in " ".join(row.value for row in section.rows)
 
 
 def test_settings_dialog_applies(win):

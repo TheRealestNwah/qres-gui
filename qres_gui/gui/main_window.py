@@ -20,7 +20,7 @@ from .. import (__version__, config, display, hdr, hooks, notify, paths, playnit
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
-from .dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
+from .dialogs import AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog
 from .guide import GettingStarted
 from .hotkeys import HotkeyManager
 from .presets import ApplyResolutionDialog, PresetsDialog, preset_device, preset_label, preset_name
@@ -848,7 +848,8 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self, self.cfg, self.modes, on_remove_hooks=self.remove_all_hooks,
                                 on_playnite=self.open_playnite,
                                 on_check_updates=lambda: self.check_for_updates(wait=True),
-                                on_guide=self.open_guide)
+                                on_guide=self.open_guide,
+                                on_diagnostics=self.open_diagnostics)
         if dialog.exec():
             dialog.apply_to(self.cfg)
             self._save_now()
@@ -900,6 +901,9 @@ class MainWindow(QMainWindow):
             self._poll_state()
         else:
             self._save_now()
+
+    def open_diagnostics(self) -> None:
+        DiagnosticsDialog(self, self.cfg).exec()
 
     def open_playnite(self) -> None:
         PlayniteDialog(self).exec()
