@@ -129,7 +129,11 @@ class MainWindow(QMainWindow):
         filters = QHBoxLayout()
         self.search = QLineEdit(placeholderText="Search games…", clearButtonEnabled=True)
         self.search.textChanged.connect(self._apply_filter)
-        self.store_filter = QComboBox()
+        # One pill with a chevron, so it reads as a dropdown at a glance (#9). The
+        # search box shares its height so the row lines up.
+        self.store_filter = QComboBox(objectName="pill")
+        self.store_filter.setFixedHeight(theme.PILL_HEIGHT)
+        self.search.setFixedHeight(theme.PILL_HEIGHT)
         self.store_filter.currentIndexChanged.connect(self._apply_filter)
         self.only_configured = QCheckBox("Configured only")
         self.only_configured.toggled.connect(self._apply_filter)

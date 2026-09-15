@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPixmap
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QLabel
+
+from .. import paths
 
 ACCENT = "#5b8def"
 OK = "#5fd38d"
 WARN = "#f0b54a"
 ERROR = "#ef6b6b"
 MUTED = "#8b919b"
+# Borders for fields. Bright enough to read against the window: at #33373e a
+# dropdown's outline all but vanished (#9).
+FIELD_BORDER = "#4a4f58"
+FIELD_HOVER = "#5d636e"
+ARROW = "#b9bec6"
+ARROW_DISABLED = "#5a5f68"
+PILL_HEIGHT = 30   # the store filter's pill: its radius in the stylesheet is half this
 
 STORE_COLORS = {
     "steam": "#4c9be8",
@@ -59,9 +68,16 @@ QPushButton#primary {{ background: {ACCENT}; border-color: {ACCENT}; color: whit
 QPushButton#primary:hover {{ background: #6f9cf2; }}
 QPushButton#primary:disabled {{ background: #2c3850; border-color: #2c3850; color: #8791a3; }}
 QLineEdit, QComboBox, QDoubleSpinBox {{
-    background: #16181b; border: 1px solid #33373e; border-radius: 6px; padding: 5px 8px;
+    background: #16181b; border: 1px solid {FIELD_BORDER}; border-radius: 6px; padding: 5px 8px;
 }}
+QComboBox, QDoubleSpinBox {{ background: #1b1d21; }}
+QLineEdit:hover, QComboBox:hover, QDoubleSpinBox:hover {{ border-color: {FIELD_HOVER}; }}
 QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus {{ border-color: {ACCENT}; }}
+QLineEdit:disabled, QComboBox:disabled, QDoubleSpinBox:disabled {{ border-color: #2e3238; color: #666b74; }}
+QComboBox QAbstractItemView {{
+    background: #1b1d21; border: 1px solid {FIELD_BORDER}; selection-background-color: #2f4a7a; outline: 0;
+}}
+QComboBox#pill {{ border-radius: {PILL_HEIGHT // 2}px; padding-left: 14px; }}
 QLineEdit[readOnly="true"] {{ color: #b9bec6; background: #1a1c20; }}
 QTreeWidget {{ border: 1px solid #2e3238; border-radius: 8px; padding: 2px; }}
 QTreeWidget::item {{ padding: 3px 2px; }}
@@ -93,7 +109,73 @@ def apply(app: QApplication) -> None:
     for r in (role.Text, role.ButtonText, role.WindowText):
         palette.setColor(QPalette.ColorGroup.Disabled, r, QColor("#666b74"))
     app.setPalette(palette)
-    app.setStyleSheet(STYLESHEET)
+    app.setStyleSheet(STYLESHEET + _arrows_css())
+
+
+# --- the arrows on dropdowns and spin boxes -----------------------------------
+#
+# Once a combo box or spin box has a stylesheet border, Fusion stops drawing its
+# arrow areas properly: the dropdown's arrow sat in a box of its own and the
+# spin boxes' buttons shrank to a sliver (#9). Styling those parts means giving
+# them images, and QtSvg isn't in the build, so the chevrons are painted here
+# and written out as PNGs (with @2x copies for scaled displays) that the
+# stylesheet points at.
+
+def _chevron(up: bool, color: str, scale: int) -> QPixmap:
+    w, h = 10 * scale, 6 * scale
+    pm = QPixmap(w, h)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(color), 1.6 * scale, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                  Qt.PenJoinStyle.RoundJoin))
+    top, bottom = 1.2 * scale, h - 1.2 * scale
+    y_ends, y_tip = (bottom, top) if up else (top, bottom)
+    p.drawPolyline([QPointF(1.2 * scale, y_ends), QPointF(w / 2, y_tip), QPointF(w - 1.2 * scale, y_ends)])
+    p.end()
+    return pm
+
+
+def _arrow_file(up: bool, color: str) -> str:
+    """Path to a chevron PNG, written once per colour (a new colour gets a new name)."""
+    folder = paths.app_dir() / "ui"
+    folder.mkdir(exist_ok=True)
+    stem = f"chevron-{'up' if up else 'down'}-{color.lstrip('#')}"
+    target = folder / f"{stem}.png"
+    for scale, name in ((1, f"{stem}.png"), (2, f"{stem}@2x.png")):
+        if not (folder / name).exists():
+            _chevron(up, color, scale).save(str(folder / name))
+    return target.as_posix()
+
+
+def _arrows_css() -> str:
+    try:
+        down, up = _arrow_file(False, ARROW), _arrow_file(True, ARROW)
+        down_off, up_off = _arrow_file(False, ARROW_DISABLED), _arrow_file(True, ARROW_DISABLED)
+    except OSError:
+        return ""   # Fusion's own arrows are a worse look, not a broken one
+    return f"""
+QComboBox {{ padding-right: 28px; }}
+QComboBox::drop-down {{
+    subcontrol-origin: padding; subcontrol-position: center right; width: 26px; border: none; background: transparent;
+}}
+QComboBox::down-arrow {{ image: url("{down}"); width: 10px; height: 6px; }}
+QComboBox::down-arrow:disabled {{ image: url("{down_off}"); }}
+QDoubleSpinBox {{ padding-right: 26px; }}
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border; width: 22px; border: none; border-left: 1px solid {FIELD_BORDER};
+    background: transparent;
+}}
+QDoubleSpinBox::up-button {{ subcontrol-position: top right; border-top-right-radius: 6px; }}
+QDoubleSpinBox::down-button {{
+    subcontrol-position: bottom right; border-bottom-right-radius: 6px; border-top: 1px solid {FIELD_BORDER};
+}}
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{ background: #2a2d33; }}
+QDoubleSpinBox::up-arrow {{ image: url("{up}"); width: 10px; height: 6px; }}
+QDoubleSpinBox::down-arrow {{ image: url("{down}"); width: 10px; height: 6px; }}
+QDoubleSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:off {{ image: url("{up_off}"); }}
+QDoubleSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:off {{ image: url("{down_off}"); }}
+"""
 
 
 def set_state(label: QLabel, kind: str, text: str) -> None:
