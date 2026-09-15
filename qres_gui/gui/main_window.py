@@ -467,7 +467,7 @@ class MainWindow(QMainWindow):
                 entry["launch"], entry["name"] = game.launch, game.name
             if game:
                 entry["install_dir"] = game.install_dir
-        self.playnite_state = playnite.state(paths.launcher_command())
+        self.playnite_state = playnite.state(paths.hook_command())
         # A rescan is also the moment to notice a display being plugged in or out.
         self.displays = display.list_displays()
         self._modes_by_device.clear()
@@ -563,11 +563,16 @@ class MainWindow(QMainWindow):
     # --- Steam helpers used by the detail panel ------------------------------
 
     def steam_prefix(self, game_id: str) -> str:
-        return steam.launch_prefix(paths.launcher_command(), game_id)
+        return steam.launch_prefix(paths.hook_command(), game_id)
 
     def steam_state(self, game: Game) -> str:
         appid = game.id.split(":", 1)[1]
         return steam.option_state(self.launch_opts.get(appid, ""), self.steam_prefix(game.id))
+
+    def steam_hook_missing(self, game: Game) -> bool:
+        """Whether the game's launch options run a QRes launcher that's been deleted or moved."""
+        launcher = steam.hooked_launcher(self.launch_opts.get(game.id.split(":", 1)[1], ""))
+        return bool(launcher) and not os.path.isfile(launcher)
 
     def write_steam_options(self, updates: dict[str, str]) -> bool:
         try:
@@ -661,6 +666,8 @@ class MainWindow(QMainWindow):
             state = self.steam_state(game)
             if state == "applied":
                 return ("Steam launch options", "ok") if enabled else ("Launch options (switching off)", "off")
+            if state == "outdated" and self.steam_hook_missing(game):
+                return "Launch options broken — update them", "warn"
             if state == "outdated":
                 return "Launch options need updating", "warn"
             if enabled and self.playnite_hooked:
@@ -824,7 +831,7 @@ class MainWindow(QMainWindow):
             entry["enabled"] = False
         self._save_now()
         self._reload_launch_options()
-        self.playnite_state = playnite.state(paths.launcher_command())
+        self.playnite_state = playnite.state(paths.hook_command())
         self.refresh_rows()
         self.statusBar().showMessage("Removed all hooks and turned switching off.", 10000)
 
@@ -895,7 +902,7 @@ class MainWindow(QMainWindow):
                 target = self.cfg["default_target"]
                 entry.update(enabled=True, width=target["width"], height=target["height"],
                              refresh=target.get("refresh", 0))
-            self.playnite_state = playnite.state(paths.launcher_command())
+            self.playnite_state = playnite.state(paths.hook_command())
             self._save_now()
             self.refresh_rows()
             if game_id in self.items:
@@ -935,7 +942,7 @@ class MainWindow(QMainWindow):
 
     def open_playnite(self) -> None:
         PlayniteDialog(self).exec()
-        self.playnite_state = playnite.state(paths.launcher_command())
+        self.playnite_state = playnite.state(paths.hook_command())
         self.refresh_rows()
 
     def restore_desktop(self) -> None:

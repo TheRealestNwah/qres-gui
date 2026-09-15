@@ -73,8 +73,19 @@ closed and QRes thought the game was done.
   settings file when it exits. Use **Close Steam**, or **Copy** the options and
   paste them into Steam › right-click the game › Properties › General ›
   Launch options.
-- **"Launch options need updating":** QRes GUI was moved or reinstalled
-  somewhere else. Close Steam and click **Update Steam launch options**.
+- **"Launch options need updating":** the launch options run a different copy
+  of QRes GUI than the installed one — an unzipped download, say. Close Steam
+  and click **Update Steam launch options** in the installed QRes GUI.
+- **"Launch options broken":** they run a QRes launcher that has since been
+  deleted or moved, so Steam can't start the game at all. Same fix: close
+  Steam, then **Update Steam launch options**.
+- **Trying out a different version:** unzip it anywhere and run it — Steam,
+  Playnite and shortcuts keep using your *installed* copy, so nothing breaks
+  when you delete the test folder. The flip side is that games launch the way
+  the installed version works; to try a new version's switching, install it
+  (`install.cmd`). **Settings › Launcher** and **Diagnostics** say which copy
+  games launch through. With nothing installed, hooks point at the copy you're
+  running, so don't move or delete its folder while games are set up.
 - A backup of Steam's `localconfig.vdf` is kept next to it (the last five),
   named `localconfig.vdf.qresgui-<date>.bak`.
 

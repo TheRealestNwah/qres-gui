@@ -38,3 +38,10 @@ def test_foreign_options_untouched():
     for options in ["-hz=165", '"D:\\OpenMW\\openmw.exe" %command%', "/resolution 2560 1440"]:
         assert steam.strip_ours(options) == (options, False)
         assert steam.option_state(options, FROZEN) == "none"
+        assert steam.hooked_launcher(options) is None
+
+
+def test_hooked_launcher_names_the_launcher_the_options_run():
+    """So the GUI can tell a hook to a deleted copy (broken) from one to another copy."""
+    assert steam.hooked_launcher(steam.apply_ours("-novid", FROZEN)) == r"D:\Tools\QRes GUI\QResLauncher.exe"
+    assert steam.hooked_launcher(steam.apply_ours("", SOURCE)) == r"D:\p\QResLauncher.pyw"

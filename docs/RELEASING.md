@@ -27,8 +27,9 @@ you start it.
 
 ## Any release
 
-1. Add a `## <version> — <date>` section to `CHANGELOG.md` (CI turns it into
-   the release notes; relative links are made absolute).
+1. Rename `CHANGELOG.md`'s `## Unreleased` section — where each merged pull
+   request adds its entry — to `## <version> — <date>` (CI turns it into the
+   release notes; relative links are made absolute).
 2. Bump the version in `qres_gui/__init__.py` and `pyproject.toml`.
 3. Set `__prerelease__` in `qres_gui/__init__.py`: `True` to publish for
    testing, `False` for a finished release. Keep `__version__` a plain

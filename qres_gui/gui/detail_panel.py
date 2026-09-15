@@ -545,9 +545,15 @@ class DetailPanel(QScrollArea):
             theme.set_state(self.steam_status, "ok" if enabled else "off",
                             "✓  Steam starts this game through QRes." if enabled else
                             "Steam starts this game through QRes, but switching is off, so nothing changes.")
-        elif state == "outdated":
+        elif state == "outdated" and self.win.steam_hook_missing(self.game):
             theme.set_state(self.steam_status, "warn",
-                            "The launch options point at an older QRes launcher location. Update them.")
+                            "The launch options run a QRes launcher that isn't there any more, so Steam "
+                            "can't start this game. Update them.")
+        elif state == "outdated":
+            target = "your installed QRes GUI" if paths.installed_launcher() else "this copy"
+            theme.set_state(self.steam_status, "warn",
+                            f"The launch options run a different copy of QRes GUI "
+                            f"({steam.hooked_launcher(current)}). Update them to use {target}.")
         elif enabled:
             theme.set_state(self.steam_status, "warn",
                             "Not hooked up yet: Steam will start the game without switching.")
@@ -660,7 +666,7 @@ class DetailPanel(QScrollArea):
 
     def _create_shortcut(self, folder: Path) -> None:
         entry = self._ensure_enabled()
-        cmd = paths.launcher_command()
+        cmd = paths.hook_command()
         exe = self.game.exe if self.game.exe and os.path.isfile(self.game.exe) else ""
         path = shortcuts.shortcut_path(folder, self.game.name)
         try:
