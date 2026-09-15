@@ -15,14 +15,15 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import __version__, config, display, hooks, notify, paths, playnite, session, shortcuts, updates
+from .. import (__version__, config, display, hdr, hooks, notify, paths, playnite, session, shortcuts,
+                updates)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
 from .dialogs import AddGameDialog, PlayniteDialog, SettingsDialog
 from .guide import GettingStarted
 from .hotkeys import HotkeyManager
-from .presets import ApplyResolutionDialog, PresetsDialog, preset_label, preset_name
+from .presets import ApplyResolutionDialog, PresetsDialog, preset_device, preset_label, preset_name
 from .tray import Tray
 
 ICON_SIZE = QSize(92, 43)
@@ -43,7 +44,9 @@ class MainWindow(QMainWindow):
         self.cfg = config.load()
         self.steam = SteamClient()
         self.steam_running = self.steam.available and self.steam.is_running()
-        self.modes = display.list_modes()
+        self.modes = display.list_modes()          # the primary's, which presets use
+        self.displays = display.list_displays()
+        self._modes_by_device: dict[str, list[display.Mode]] = {}
         self.games: dict[str, Game] = {}
         self.items: dict[str, GameItem] = {}
         self.launch_opts: dict[str, str] = {}
@@ -235,7 +238,10 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(bar)
         row.setContentsMargins(18, 6, 18, 6)
         row.setSpacing(6)
-        row.addWidget(QLabel("Quick switch", objectName="caption"))
+        quick = QLabel("Quick switch", objectName="caption")
+        quick.setToolTip("Presets and their hotkeys switch the display the preset names, or "
+                         "the primary one when it names none.")
+        row.addWidget(quick)
         self._preset_row = QHBoxLayout()
         self._preset_row.setSpacing(6)
         row.addLayout(self._preset_row)
@@ -253,8 +259,9 @@ class MainWindow(QMainWindow):
         self._no_presets.setVisible(not presets)
         for preset in presets:
             chip = QPushButton(preset_name(preset))
-            tip = f"Switch the primary display to {preset_label(preset)}"
-            if not display.is_size_available(preset["width"], preset["height"], self.modes):
+            screen = preset_device(preset)
+            tip = f"Switch to {preset_label(preset)}"   # the label names the screen when it isn't the primary
+            if not display.is_size_available(preset["width"], preset["height"], self.modes_for(screen)):
                 tip += " — needs a custom resolution first"
             chip.setToolTip(tip)
             chip.clicked.connect(lambda _c=False, p=preset: self.apply_preset(p))
@@ -266,13 +273,17 @@ class MainWindow(QMainWindow):
             self.refresh_tray(force=True)
 
     def _update_preset_highlight(self) -> None:
-        """Mark the chip whose resolution matches the display now, without rebuilding."""
-        try:
-            current = display.current_mode()
-        except display.DisplayError:
-            return
+        """Mark the chips whose resolution matches their own screen now, without rebuilding."""
+        seen: dict[str | None, display.Mode | None] = {}
         for chip, preset in getattr(self, "_preset_chips", []):
-            active = (current.width, current.height) == (preset["width"], preset["height"])
+            screen = preset_device(preset)
+            if screen not in seen:
+                try:
+                    seen[screen] = display.current_mode(screen)
+                except display.DisplayError:
+                    seen[screen] = None
+            current = seen[screen]
+            active = current is not None and (current.width, current.height) == (preset["width"], preset["height"])
             name = "presetActive" if active else "preset"
             if chip.objectName() != name:
                 chip.setObjectName(name)
@@ -280,17 +291,24 @@ class MainWindow(QMainWindow):
                 chip.style().polish(chip)
 
     def apply_preset(self, preset: dict) -> None:
+        """Apply a preset to the screen it names - including when a hotkey fires it."""
+        screen = preset_device(preset)
+        if screen and display.find_display(screen) is None:
+            self.statusBar().showMessage(
+                f"Display {display.device_number(screen)} isn't connected, so "
+                f"{preset_name(preset)} was left alone.", 8000)
+            return
         try:
-            desktop = display.current_mode()
+            desktop = display.current_mode(screen)
         except display.DisplayError:
             return
         target = display.resolve(int(preset["width"]), int(preset["height"]),
-                                 int(preset.get("refresh") or 0), desktop)
-        self.apply_resolution(target)
+                                 int(preset.get("refresh") or 0), desktop, screen)
+        self.apply_resolution(target, screen)
 
-    def apply_resolution(self, target: display.Mode) -> None:
+    def apply_resolution(self, target: display.Mode, device: str | None = None) -> None:
         ApplyResolutionDialog(self, target, display.find_qres(self.cfg.get("qres_path")),
-                              bool(self.cfg.get("temporary", True))).exec()
+                              bool(self.cfg.get("temporary", True)), device=device).exec()
         self._refresh_presets()
         self._poll_state()
 
@@ -449,6 +467,9 @@ class MainWindow(QMainWindow):
             if game:
                 entry["install_dir"] = game.install_dir
         self.playnite_state = playnite.state(paths.launcher_command())
+        # A rescan is also the moment to notice a display being plugged in or out.
+        self.displays = display.list_displays()
+        self._modes_by_device.clear()
         self.save()
 
         stores_present = sorted({g.store for g in self.games.values()}, key=list(STORE_LABELS).index)
@@ -479,6 +500,21 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError) as exc:
             self.launch_opts = {}
             self.statusBar().showMessage(f"Couldn't read Steam launch options: {exc}", 10000)
+
+    def modes_for(self, device: str | None) -> list[display.Mode]:
+        """The modes one display offers, read once and kept.
+
+        `self.modes` stays the primary's, which is what a caller with no
+        display in hand - and a preset that names none - asks for.
+        """
+        if not device:
+            return self.modes
+        if device not in self._modes_by_device:
+            try:
+                self._modes_by_device[device] = display.list_modes(device)
+            except display.DisplayError:
+                self._modes_by_device[device] = []
+        return self._modes_by_device[device] or self.modes
 
     def entry_for(self, game: Game, create: bool = False) -> dict | None:
         entry = self.cfg["games"].get(game.id)
@@ -602,7 +638,12 @@ class MainWindow(QMainWindow):
         item.setText(0, game.name)
         item.setText(1, game.store_label)
         item.setForeground(1, QBrush(QColor(theme.STORE_COLORS.get(game.store, theme.MUTED))))
-        item.setText(2, f"{entry['width']} × {entry['height']}" if enabled else "—")
+        target = f"{entry['width']} × {entry['height']}" if enabled else "—"
+        if enabled and entry.get("display"):
+            target += f"  ·  Display {display.device_number(entry['display'])}"
+        if enabled and entry.get("hdr") is not None:
+            target += "  ·  HDR " + ("on" if entry["hdr"] else "off")
+        item.setText(2, target)
         item.setForeground(2, QBrush(QColor("#e4e6ea" if enabled else theme.MUTED)))
         text, kind = self.hook_status(game, entry)
         item.setText(3, text)
@@ -877,17 +918,33 @@ class MainWindow(QMainWindow):
                 return
         source = (active or {}).get("original") or self.cfg.get("desktop_mode")
         mode = display.Mode.from_dict(source)
+        # Put back the screen the record names, and the HDR state with it - this
+        # is the button the launcher's own failure notifications point people at,
+        # so it has to undo everything a switch did, not just the resolution.
+        device = (active or {}).get("device") or None
+        want_hdr = (active or {}).get("original_hdr")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            how = display.set_mode(mode, display.find_qres(self.cfg.get("qres_path")), self.cfg.get("temporary", True))
+            how = display.set_mode(mode, display.find_qres(self.cfg.get("qres_path")),
+                                   self.cfg.get("temporary", True), device)
         except display.DisplayError as exc:
             QMessageBox.warning(self, "Restore desktop resolution", str(exc))
             return
         finally:
             QApplication.restoreOverrideCursor()
+        hdr_note = ""
+        if want_hdr is not None:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                if hdr.set_enabled(bool(want_hdr), device):
+                    hdr_note = f"  HDR turned back {'on' if want_hdr else 'off'}."
+            except Exception as exc:  # the resolution is already back; don't undo that over HDR
+                hdr_note = f"  HDR couldn't be put back: {exc}"
+            finally:
+                QApplication.restoreOverrideCursor()
         if active and not session.owner_alive(active):
             session.clear()
-        self.statusBar().showMessage(f"Switched to {mode} ({how}).", 6000)
+        self.statusBar().showMessage(f"Switched to {mode} ({how}).{hdr_note}", 8000)
         self._poll_state()
 
     def _ensure_qres(self) -> None:
@@ -910,13 +967,23 @@ class MainWindow(QMainWindow):
         if not active or session.owner_alive(active):
             return
         original = display.Mode.from_dict(active["original"])
-        if display.current_mode() == original:
+        # Against the screen the record names. Reading the primary instead would
+        # compare two different displays, and on a chance match would clear the
+        # record - stranding the other screen with nothing left to restore from.
+        device = active.get("device") or None
+        try:
+            current = display.current_mode(device)
+        except display.DisplayError:
+            current = None  # unplugged since; offer the restore rather than drop the record
+        if current == original:
             session.clear()
             return
+        where = f" on Display {display.device_number(device)}" if device else ""
         answer = QMessageBox.question(
             self, "Resolution wasn't restored",
-            f"A game launched through QRes didn't switch the display back.\n\n"
-            f"Current: {display.current_mode()}\nDesktop: {original}\n\nSwitch back now?",
+            f"A game launched through QRes didn't switch the display back{where}.\n\n"
+            f"Current: {current if current else 'not connected'}\nDesktop: {original}\n\n"
+            f"Switch back now?",
         )
         if answer == QMessageBox.StandardButton.Yes:
             self.restore_desktop()

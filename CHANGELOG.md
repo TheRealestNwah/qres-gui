@@ -1,7 +1,85 @@
 # Changelog
 
 All notable changes to QRes GUI. Versions before 1.0 were marked as
-pre-releases on GitHub.
+pre-releases on GitHub, as is any later version that ships for testing before
+it has been proven on real hardware.
+
+## 1.3.0 — 2026-09-14
+
+HDR switching has been tested on a real HDR display: turned off for a game
+and put back on a normal quit, Steam's **Stop**, the game being killed in Task
+Manager, and **Restore desktop resolution** mid-game. Switching a second
+monitor hasn't been tried with more than one screen connected yet; reports
+welcome. Existing profiles are unaffected: HDR and display selection are off
+unless a profile asks for them, and a profile that names no display still
+means the primary one.
+
+### Added
+- **Per-game HDR.** A game's profile can turn HDR on or off while it runs and
+  put it back when it exits — on for a game that wants it, off so an SDR game
+  doesn't look washed out. QRes can't switch HDR, so this goes through the
+  Windows display API (`DisplayConfig`, Windows 10 1709 and later). Where HDR
+  isn't available the control is greyed out and says why, and a failed switch
+  never stops a game from starting.
+- **Per-game display selection.** A game's profile can switch any connected
+  display, not just the primary one. The **Display** row at the top of the
+  Display box lists every monitor Windows reports, and the resolution and
+  refresh-rate choices come from the screen you pick. The default, *Primary
+  display*, follows whichever screen Windows calls primary, so it survives
+  re-plugging. HDR follows the same screen, so the two can't land on different
+  monitors.
+
+  The chosen display and the desktop's HDR state are both recorded alongside
+  the resolution, so the guard, **Restore desktop resolution**,
+  `QResLauncher.exe restore` and Playnite's stop script all put back the screen
+  that was actually changed, in the state it was in. A profile naming a monitor
+  that isn't plugged in switches nothing and says so, rather than switching a
+  different screen.
+- **Presets name a display too.** The preset editor has a Display row, and a
+  preset's global hotkey switches the screen the preset names — a hotkey fires
+  with no window in front of you, so the screen has to come from the preset
+  itself. Chips, the tray menu and the presets list all match against the
+  preset's own screen, and a preset whose display isn't connected switches
+  nothing and says so.
+- **Custom launch arguments** for store games QRes GUI starts itself (GOG, EA,
+  Amazon, standalone): an **Extra arguments** field, added after the store's own
+  arguments and kept when a rescan refreshes them. They apply to shortcuts QRes
+  made and to **Play**; Steam games keep using Steam's own launch options.
+
+### Changed
+- A game's **Resolution** box is now **Display**, covering the screen,
+  resolution, refresh rate and HDR together.
+- `display` and `hdr` both take a display throughout, defaulting to the primary
+  one, so existing profiles behave exactly as before.
+- QRes.exe drives the primary display only — it has no monitor argument — so a
+  named secondary screen goes through the Windows display API instead. Primary
+  profiles still try QRes first.
+
+### Fixed
+- **Restore desktop resolution** now puts back HDR, and the display the session
+  record names rather than always the primary one. It only ever switched the
+  primary's resolution, which mattered because that button is where the
+  launcher's own failure notifications send you; every automatic path was
+  already correct.
+- The guard no longer gives up when the display a profile named has been
+  unplugged mid-game; it falls through to the restore attempt instead.
+- A leftover session record is now judged against the display it names. It was
+  compared with the primary, so a chance match would clear the record and
+  strand the other screen with nothing left to restore from.
+- A leftover record for a *different* screen is no longer inherited as this
+  screen's desktop mode, which could put one display's resolution on another.
+- The Quick switch tooltip and `modes_for`'s docstring still said presets were
+  primary-only after presets learned to name a screen.
+- The HDR control said "Your primary display doesn't report HDR support" no
+  matter which display it was reporting on, and the Getting started guide still
+  said other monitors are left alone.
+- **Getting started** now covers per-game displays and HDR, tailored to the PC
+  it's running on rather than promising a second screen or an HDR toggle that
+  isn't there.
+
+### Removed
+- `display.monitor_count`, which only fed the "QRes only switches the primary
+  one" warning that the display picker replaces.
 
 ## 1.2.0 — 2026-09-13
 

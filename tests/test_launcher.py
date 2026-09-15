@@ -64,9 +64,10 @@ def test_switch_and_restore_are_paired(monkeypatch):
     """With the display calls stubbed out, check the switch/restore sequence and session record."""
     calls = []
     desktop = display.Mode(3440, 1440, 165)
-    monkeypatch.setattr(display, "current_mode", lambda: desktop)
-    monkeypatch.setattr(display, "resolve", lambda w, h, r, d: display.Mode(w, h, d.refresh))
-    monkeypatch.setattr(display, "set_mode", lambda mode, qres, temporary: calls.append(mode) or "stub")
+    monkeypatch.setattr(display, "current_mode", lambda device=None: desktop)
+    monkeypatch.setattr(display, "resolve", lambda w, h, r, d, device=None: display.Mode(w, h, d.refresh))
+    monkeypatch.setattr(display, "set_mode",
+                        lambda mode, qres, temporary, device=None: calls.append(mode) or "stub")
     monkeypatch.setattr(launcher, "_spawn_guard", no_guard)
     cfg = config.load()
     cfg.update(switch_delay=0, restore_delay=0)
@@ -95,10 +96,11 @@ def test_quick_restore_skips_the_waits(monkeypatch, tmp_path, quick, minimum, ma
     monkeypatch.setattr(launcher, "EXIT_GRACE", 1.5)
     desktop = display.Mode(3440, 1440, 165)
     restored_at = []
-    monkeypatch.setattr(display, "current_mode", lambda: desktop)
-    monkeypatch.setattr(display, "resolve", lambda w, h, r, d: display.Mode(w, h, d.refresh))
+    monkeypatch.setattr(display, "current_mode", lambda device=None: desktop)
+    monkeypatch.setattr(display, "resolve", lambda w, h, r, d, device=None: display.Mode(w, h, d.refresh))
     monkeypatch.setattr(display, "set_mode",
-                        lambda mode, qres, temporary: mode == desktop and restored_at.append(time.monotonic()))
+                        lambda mode, qres, temporary, device=None:
+                            mode == desktop and restored_at.append(time.monotonic()))
     monkeypatch.setattr(launcher, "_spawn_guard", no_guard)
     cfg = config.load()
     cfg.update(switch_delay=0, restore_delay=1.0)

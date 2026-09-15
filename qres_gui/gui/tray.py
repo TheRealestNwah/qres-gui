@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from .. import display
 from . import theme
-from .presets import preset_label, preset_name
+from .presets import preset_device, preset_label, preset_name
 
 
 class Tray(QSystemTrayIcon):
@@ -42,7 +42,17 @@ class Tray(QSystemTrayIcon):
         if presets:
             for preset in presets:
                 action = QAction(f"{preset_name(preset)}  ·  {preset_label(preset)}", self.menu)
-                if current and (current.width, current.height) == (preset["width"], preset["height"]):
+                # A preset naming another screen is matched against that screen,
+                # not against the primary the header shows.
+                screen = preset_device(preset)
+                if screen:
+                    try:
+                        here = display.current_mode(screen)
+                    except display.DisplayError:
+                        here = None
+                else:
+                    here = current
+                if here and (here.width, here.height) == (preset["width"], preset["height"]):
                     action.setText("● " + action.text())
                 action.triggered.connect(lambda _c=False, p=preset: self.win.apply_preset(p))
                 self.menu.addAction(action)

@@ -353,12 +353,14 @@ class AddGameDialog(QDialog):
 class TestResolutionDialog(QDialog):
     """Switch to a mode for a few seconds, then back, so it can be checked safely."""
 
-    def __init__(self, parent, target: display.Mode, qres: str | None, temporary: bool, seconds: int = 10):
+    def __init__(self, parent, target: display.Mode, qres: str | None, temporary: bool,
+                 seconds: int = 10, device: str | None = None):
         super().__init__(parent)
         self.setWindowTitle("Testing resolution")
         self.setMinimumWidth(420)
         self.target, self.qres, self.temporary = target, qres, temporary
-        self.original = display.current_mode()
+        self.device = device
+        self.original = display.current_mode(device)
         self.remaining = seconds
         self.switched = False
 
@@ -378,7 +380,7 @@ class TestResolutionDialog(QDialog):
     def _switch(self) -> None:
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            how = display.set_mode(self.target, self.qres, self.temporary)
+            how = display.set_mode(self.target, self.qres, self.temporary, self.device)
         except display.DisplayError as exc:
             self.message.setText(str(exc))
             self.countdown.setText("")
@@ -405,7 +407,7 @@ class TestResolutionDialog(QDialog):
         if self.switched:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                display.set_mode(self.original, self.qres, self.temporary)
+                display.set_mode(self.original, self.qres, self.temporary, self.device)
             except display.DisplayError:
                 pass  # the main window's restore button covers this
             finally:

@@ -152,13 +152,13 @@ def switching(monkeypatch):
     desktop = display.Mode(3440, 1440, 165)
     state = {"mode": desktop, "calls": []}
 
-    def set_mode(mode, qres, temporary):
+    def set_mode(mode, qres, temporary, device=None):
         state["calls"].append(mode)
         state["mode"] = mode
         return "stub"
 
-    monkeypatch.setattr(display, "current_mode", lambda: state["mode"])
-    monkeypatch.setattr(display, "resolve", lambda w, h, r, d: display.Mode(w, h, d.refresh))
+    monkeypatch.setattr(display, "current_mode", lambda device=None: state["mode"])
+    monkeypatch.setattr(display, "resolve", lambda w, h, r, d, device=None: display.Mode(w, h, d.refresh))
     monkeypatch.setattr(display, "set_mode", set_mode)
     monkeypatch.setattr(launcher, "_spawn_guard", no_guard)
     fake = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
-from .. import display, paths, playnite
+from .. import display, hdr, paths, playnite
 from . import theme
 
 PAGES = ("Welcome", "QRes", "Resolutions", "Your launchers", "Pick a game")
@@ -83,7 +83,8 @@ class GettingStarted(QDialog):
             _text("QRes GUI switches Windows to that resolution while such a game runs, and back again "
                   "when it closes:"),
             _text("•&nbsp; You pick the games and their resolution.<br>"
-                  "•&nbsp; It uses QRes to switch your <b>primary display</b> (other monitors are left alone).<br>"
+                  "•&nbsp; It switches your <b>primary display</b> by default, or another monitor if a game's "
+                  "profile names one.<br>"
                   "•&nbsp; Switches aren't saved to Windows, so even a crash or reboot comes back at "
                   "your normal resolution."),
             _text("This takes about a minute. You can reopen it from <b>Settings › Getting started</b>.",
@@ -134,7 +135,28 @@ class GettingStarted(QDialog):
             form,
             _text("Refresh rate stays the same as your desktop unless you choose otherwise for a game.",
                   muted=True),
+            _text(self._extras(), muted=True),
         )
+
+    def _extras(self) -> str:
+        """What else a game's profile can change - tailored to this PC, so it
+        doesn't promise a screen or an HDR toggle that isn't there."""
+        lines = []
+        screens = len(getattr(self.win, "displays", []) or [])
+        if screens > 1:
+            lines.append(f"You have {screens} displays, so each game can pick which one it switches. "
+                         "The default follows whichever Windows calls primary.")
+        state = hdr.status()
+        if state.supported:
+            lines.append("A game can also turn HDR on or off while it runs — on for a game that wants it, "
+                         "off so an SDR game doesn't look washed out — and QRes puts it back when the game "
+                         "exits.")
+        else:
+            why = state.reason or "Windows didn't say why."
+            lines.append(f"Per-game HDR switching isn't available on this PC: {why[0].lower()}{why[1:]}")
+        lines.append("Both live in the game's Display box, along with extra launch arguments for games "
+                     "QRes GUI starts itself.")
+        return "  ".join(lines)
 
     def _launchers(self) -> QWidget:
         steam_found = bool(getattr(self.win.steam, "available", False))
