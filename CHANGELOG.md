@@ -4,7 +4,13 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
-## Unreleased
+## 1.6.0 — 2026-09-15
+
+The six issues found while testing 1.3–1.5. Everything below is covered by
+tests and the new screens were checked with the real theme; the launcher
+changes — extra arguments and engine options reaching Steam games — haven't
+been tried on real hardware yet. A game with no extra arguments or engine
+options starts exactly as before.
 
 ### Added
 - **Engine options as choices** ([#14](https://github.com/TheRealestNwah/qres-gui/issues/14)).
