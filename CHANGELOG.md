@@ -16,6 +16,12 @@ it has been proven on real hardware.
   the hidden list.
 
 ### Changed
+- **Settings is organised into tabs** ([#11](https://github.com/TheRealestNwah/qres-gui/issues/11)):
+  General, Switching, Tray & hotkeys, Integrations, Updates, and Help & About,
+  instead of one long form of sixteen rows. The dialog is less than half as
+  tall, the hints are shorter, and **Remove all hooks…** sits apart at the
+  bottom of Integrations rather than between everyday settings. Buttons in a
+  row no longer touch.
 - **Extra arguments work for Steam games, including ones started from
   Playnite** ([#13](https://github.com/TheRealestNwah/qres-gui/issues/13)).
   Steam games had no field at all. Now the launcher adds a game's extra

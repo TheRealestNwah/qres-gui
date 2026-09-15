@@ -87,6 +87,13 @@ QHeaderView::section {{
     background: #1d1f23; color: #aeb4bd; border: none; border-bottom: 1px solid #2e3238; padding: 6px;
 }}
 QScrollArea {{ border: none; }}
+QTabWidget::pane {{ border: 1px solid #2e3238; border-radius: 8px; top: -1px; }}
+QTabBar::tab {{
+    background: transparent; color: #aeb4bd; padding: 7px 14px; border: none;
+    border-bottom: 2px solid transparent; margin-right: 2px;
+}}
+QTabBar::tab:hover {{ color: #e4e6ea; }}
+QTabBar::tab:selected {{ color: #e4e6ea; border-bottom-color: {ACCENT}; font-weight: 600; }}
 QSplitter::handle {{ background: transparent; width: 8px; }}
 QStatusBar {{ color: #aeb4bd; }}
 QToolTip {{ background: #2a2d33; color: #e4e6ea; border: 1px solid #3a3e46; padding: 4px; }}

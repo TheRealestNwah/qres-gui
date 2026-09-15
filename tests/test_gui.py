@@ -996,10 +996,42 @@ def test_settings_scroll_and_never_open_taller_than_the_screen(win):
     dialog = SettingsDialog(win, win.cfg, win.modes, on_playnite=lambda: None, on_remove_hooks=lambda: None,
                             on_check_updates=lambda: (None, None), on_guide=lambda: None,
                             on_diagnostics=lambda: None, on_transfer=lambda: None)
-    assert dialog.scroll.widget().isAncestorOf(dialog.qres)
+    first = dialog.tabs.widget(0)
+    assert first.widget().isAncestorOf(dialog.qres)                  # each tab scrolls on its own
     ok = next(b for b in dialog.findChildren(main_window.QPushButton) if b.text() == "OK")
-    assert not dialog.scroll.widget().isAncestorOf(ok)
+    assert not dialog.tabs.isAncestorOf(ok)                           # OK and Cancel stay put below
     assert dialog.height() <= dialog.screen().availableGeometry().height()
+
+
+def _tab_of(dialog, widget):
+    return next(dialog.tabs.tabText(i).replace("&&", "&") for i in range(dialog.tabs.count())
+                if dialog.tabs.widget(i).widget().isAncestorOf(widget))
+
+
+def test_settings_are_grouped_into_tabs(win):
+    """#11: one flat form of sixteen rows became six short tabs."""
+    dialog = SettingsDialog(win, win.cfg, win.modes, on_playnite=lambda: None, on_remove_hooks=lambda: None,
+                            on_check_updates=lambda: (None, None), on_guide=lambda: None,
+                            on_diagnostics=lambda: None, on_transfer=lambda: None)
+    assert [dialog.tabs.tabText(i).replace("&&", "&") for i in range(dialog.tabs.count())] == [
+        "General", "Switching", "Tray & hotkeys", "Integrations", "Updates", "Help & About"]
+    assert _tab_of(dialog, dialog.qres) == "General"
+    assert _tab_of(dialog, dialog.switch_delay) == "Switching"
+    assert _tab_of(dialog, dialog.restore_hotkey) == "Tray & hotkeys"
+    assert _tab_of(dialog, dialog.check_updates) == "Updates"
+    button = {b.text(): b for b in dialog.findChildren(main_window.QPushButton)}
+    assert _tab_of(dialog, button["Remove all hooks…"]) == "Integrations"   # away from everyday settings
+    assert _tab_of(dialog, button["Diagnostics…"]) == "Help & About"
+    assert _tab_of(dialog, button["Back up and restore…"]) == "Help & About"
+
+
+def test_settings_still_saves_from_every_tab(win):
+    dialog = SettingsDialog(win, win.cfg, win.modes)
+    dialog.switch_delay.setValue(3.0)
+    dialog.background.setChecked(True)
+    dialog.check_updates.setChecked(False)
+    dialog.apply_to(win.cfg)
+    assert (win.cfg["switch_delay"], win.cfg["background"], win.cfg["check_updates"]) == (3.0, True, False)
 
 
 def test_settings_dialog_applies(win):
