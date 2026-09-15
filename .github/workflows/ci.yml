@@ -100,7 +100,10 @@ jobs:
           $kind = if ($unfinished -or [version]$version -lt [version]"1.0.0") { "--prerelease" } else { "--latest" }
           # A pushed tag already exists, so insist on it. A dispatched one is
           # created here from the commit that was just tested and built.
-          $where = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-              @("--target", "$(git rev-parse HEAD)")
-          } else { @("--verify-tag") }
+          # The outer @() matters: PowerShell unwraps a one-item array coming
+          # out of an if, and splatting the bare string "--verify-tag" hands
+          # gh one argument per character.
+          $where = @(if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+              "--target", "$(git rev-parse HEAD)"
+          } else { "--verify-tag" })
           gh release create $env:TAG $zip $kind @where --title "QRes GUI $version" --notes-file notes.md

@@ -4,4 +4,4 @@ __version__ = "1.4.0"
 # Whether GitHub marks this version a pre-release. The version string stays a
 # plain x.y.z - updates.parse_version only understands that shape - so
 # "unfinished" is said here rather than as a tag suffix.
-__prerelease__ = True
+__prerelease__ = False
