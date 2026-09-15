@@ -20,7 +20,8 @@ from .. import (__version__, config, display, hdr, hooks, notify, paths, playnit
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
-from .dialogs import AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog
+from .dialogs import (AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog,
+                      TransferDialog)
 from .guide import GettingStarted
 from .hotkeys import HotkeyManager
 from .presets import ApplyResolutionDialog, PresetsDialog, preset_device, preset_label, preset_name
@@ -849,7 +850,8 @@ class MainWindow(QMainWindow):
                                 on_playnite=self.open_playnite,
                                 on_check_updates=lambda: self.check_for_updates(wait=True),
                                 on_guide=self.open_guide,
-                                on_diagnostics=self.open_diagnostics)
+                                on_diagnostics=self.open_diagnostics,
+                                on_transfer=self.open_transfer)
         if dialog.exec():
             dialog.apply_to(self.cfg)
             self._save_now()
@@ -901,6 +903,32 @@ class MainWindow(QMainWindow):
             self._poll_state()
         else:
             self._save_now()
+
+    def open_transfer(self) -> None:
+        dialog = TransferDialog(self, self.cfg)
+        dialog.exec()
+        if dialog.imported:
+            # An import can touch every profile, every preset and the hotkeys,
+            # so everything that reads them is rebuilt rather than patched.
+            self._save_now()
+            if dialog.summary and dialog.summary.games_listed_changed:
+                # Hand-added games live only in their profiles, so one coming or
+                # going changes the list itself; a rescan rebuilds it and
+                # reloads whichever game is selected.
+                self.rescan()
+            else:
+                self.refresh_rows()
+                # The panel reads a profile when its game is selected, so without
+                # this it keeps showing what the import just replaced.
+                self.detail.show_game(self.detail.game)
+            self._sync_tray()
+            self._refresh_presets()
+            failed = self.apply_hotkeys()
+            if failed:
+                QMessageBox.warning(self, "Hotkeys",
+                                    "These shortcuts couldn't be registered (another program may "
+                                    "already use them):\n\n  " + "\n  ".join(sorted(failed.values())))
+            self.statusBar().showMessage("Profiles imported.", 8000)
 
     def open_diagnostics(self) -> None:
         DiagnosticsDialog(self, self.cfg).exec()

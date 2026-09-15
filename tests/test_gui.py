@@ -11,9 +11,10 @@ import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from qres_gui import (__version__, config, display, hdr, notify, paths, playnite, session, shortcuts,
-                      updates)
+                      transfer, updates)
 from qres_gui.gui import main_window, theme
-from qres_gui.gui.dialogs import AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog
+from qres_gui.gui.dialogs import (AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog,
+                                  TransferDialog)
 from qres_gui.stores import Game, steam
 
 MODES = [display.Mode(3440, 1440, 165), display.Mode(3440, 1440, 60), display.Mode(2560, 1440, 165),
@@ -750,6 +751,127 @@ def test_diagnostics_never_checks_for_updates(win, monkeypatch):
     dialog = DiagnosticsDialog(win, win.cfg)
     [section] = [s for s in dialog.sections if s.title == "Updates"]
     assert "9.9.9" in " ".join(row.value for row in section.rows)
+
+
+def test_settings_opens_the_transfer_dialog(win):
+    opened = []
+    dialog = SettingsDialog(win, win.cfg, win.modes, on_transfer=lambda: opened.append(True))
+    [button] = [b for b in dialog.findChildren(main_window.QPushButton)
+                if b.text() == "Back up and restore…"]
+    button.click()
+    assert opened == [True] and dialog.result() == 0  # Settings closed without applying
+
+
+def test_transfer_round_trip_through_the_dialog(win, monkeypatch, tmp_path):
+    """Export then import into a config that has lost its profiles."""
+    win.cfg["games"]["steam:10"] = {"name": "Portal 2", "store": "steam", "enabled": True,
+                                    "width": 2560, "height": 1440, "refresh": 0}
+    out = tmp_path / "profiles.json"
+
+    dialog = TransferDialog(win, win.cfg)
+    monkeypatch.setattr(main_window.QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr("qres_gui.gui.dialogs.QFileDialog.getSaveFileName",
+                        lambda *a, **k: (str(out), ""))
+    dialog._export()
+    assert out.exists() and not dialog.imported
+
+    win.cfg["games"].pop("steam:10")
+    monkeypatch.setattr("qres_gui.gui.dialogs.QFileDialog.getOpenFileName",
+                        lambda *a, **k: (str(out), ""))
+    monkeypatch.setattr(main_window.QMessageBox, "question",
+                        lambda *a, **k: main_window.QMessageBox.StandardButton.Yes)
+    dialog._import()
+    assert dialog.imported and win.cfg["games"]["steam:10"]["width"] == 2560
+
+
+def test_transfer_import_declined_changes_nothing(win, monkeypatch, tmp_path):
+    win.cfg["games"]["steam:10"] = {"name": "Portal 2", "store": "steam", "enabled": True,
+                                    "width": 2560, "height": 1440, "refresh": 0}
+    out = tmp_path / "profiles.json"
+    transfer.write_export(win.cfg, out)
+    win.cfg["games"]["steam:10"]["width"] = 1920
+
+    dialog = TransferDialog(win, win.cfg)
+    monkeypatch.setattr("qres_gui.gui.dialogs.QFileDialog.getOpenFileName",
+                        lambda *a, **k: (str(out), ""))
+    monkeypatch.setattr(main_window.QMessageBox, "question",
+                        lambda *a, **k: main_window.QMessageBox.StandardButton.No)
+    dialog._import()
+    assert not dialog.imported and win.cfg["games"]["steam:10"]["width"] == 1920
+
+
+def test_transfer_reports_a_bad_file_without_touching_the_config(win, monkeypatch, tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{}", encoding="utf-8")
+    before = dict(win.cfg["games"])
+    said = []
+    dialog = TransferDialog(win, win.cfg)
+    monkeypatch.setattr("qres_gui.gui.dialogs.QFileDialog.getOpenFileName",
+                        lambda *a, **k: (str(bad), ""))
+    monkeypatch.setattr(main_window.QMessageBox, "warning",
+                        lambda parent, title, text, *a, **k: said.append(text))
+    dialog._import()
+    assert not dialog.imported and win.cfg["games"] == before
+    assert said and "isn't a QRes GUI profile export" in said[0]
+
+
+def _import_through_dialog(win, monkeypatch, path, merge=False):
+    dialog = TransferDialog(win, win.cfg)
+    monkeypatch.setattr("qres_gui.gui.dialogs.QFileDialog.getOpenFileName", lambda *a, **k: (str(path), ""))
+    if merge:
+        dialog.merge_mode.setChecked(True)
+    dialog._import()
+    return dialog
+
+
+def test_transfer_restores_by_default_and_removes_what_came_since(win, monkeypatch, tmp_path):
+    win.cfg["games"]["steam:10"] = {"name": "Counter Test", "store": "steam", "enabled": True,
+                                    "width": 2560, "height": 1440, "refresh": 0}
+    out = transfer.write_export(win.cfg, tmp_path / "profiles.json")
+    win.cfg["games"]["gog:1453375253"] = {"name": "Stardew Valley", "store": "gog", "enabled": True,
+                                          "width": 1920, "height": 1080, "refresh": 0}
+    dialog = _import_through_dialog(win, monkeypatch, out)
+    assert dialog.restore_mode.isChecked() and dialog.imported
+    assert "gog:1453375253" not in win.cfg["games"] and "steam:10" in win.cfg["games"]
+    assert dialog.summary.games_removed == ["Stardew Valley"]
+
+
+def test_transfer_merge_keeps_what_came_since(win, monkeypatch, tmp_path):
+    win.cfg["games"]["steam:10"] = {"name": "Counter Test", "store": "steam", "enabled": True,
+                                    "width": 2560, "height": 1440, "refresh": 0}
+    out = transfer.write_export(win.cfg, tmp_path / "profiles.json")
+    win.cfg["games"]["steam:10"]["width"] = 1920
+    win.cfg["games"]["gog:1453375253"] = {"name": "Stardew Valley", "store": "gog", "enabled": True,
+                                          "width": 1920, "height": 1080, "refresh": 0}
+    _import_through_dialog(win, monkeypatch, out, merge=True)
+    assert win.cfg["games"]["steam:10"]["width"] == 2560 and "gog:1453375253" in win.cfg["games"]
+
+
+def test_the_game_panel_shows_what_an_import_restored(win, monkeypatch, tmp_path):
+    """QA found the panel kept showing the old refresh rate until another game was clicked."""
+    win.cfg["games"]["steam:10"] = {"name": "Counter Test", "store": "steam", "enabled": True,
+                                    "width": 2560, "height": 1440, "refresh": 0}
+    out = transfer.write_export(win.cfg, tmp_path / "profiles.json")
+    select(win, "steam:10")
+    win.detail.rate_combo.setCurrentIndex(win.detail.rate_combo.findData(60))
+    assert win.cfg["games"]["steam:10"]["refresh"] == 60
+
+    monkeypatch.setattr("qres_gui.gui.dialogs.QFileDialog.getOpenFileName", lambda *a, **k: (str(out), ""))
+    monkeypatch.setattr(TransferDialog, "exec", lambda self: self._import())
+    win.open_transfer()
+    assert win.cfg["games"]["steam:10"]["refresh"] == 0
+    assert int(win.detail.rate_combo.currentData() or 0) == 0
+
+
+def test_settings_scroll_and_never_open_taller_than_the_screen(win):
+    """On 1080p the form is taller than the screen; OK and Cancel must stay reachable."""
+    dialog = SettingsDialog(win, win.cfg, win.modes, on_playnite=lambda: None, on_remove_hooks=lambda: None,
+                            on_check_updates=lambda: (None, None), on_guide=lambda: None,
+                            on_diagnostics=lambda: None, on_transfer=lambda: None)
+    assert dialog.scroll.widget().isAncestorOf(dialog.qres)
+    ok = next(b for b in dialog.findChildren(main_window.QPushButton) if b.text() == "OK")
+    assert not dialog.scroll.widget().isAncestorOf(ok)
+    assert dialog.height() <= dialog.screen().availableGeometry().height()
 
 
 def test_settings_dialog_applies(win):
