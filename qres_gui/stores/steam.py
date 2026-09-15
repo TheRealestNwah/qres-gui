@@ -29,7 +29,7 @@ BACKUPS_KEPT = 5
 # Matches the part of a launch-options string that we added, in either the
 # frozen form ("...\QResLauncher.exe" run steam:1) or the from-source form
 # ("...\pythonw.exe" "...\QResLauncher.pyw" run steam:1).
-_OURS = re.compile(r'^\s*(?:"[^"]*"\s+)?"[^"]*QResLauncher\.(?:exe|pyw)"\s+run\s+\S+\s*', re.I)
+_OURS = re.compile(r'^\s*(?:"[^"]*"\s+)?"([^"]*QResLauncher\.(?:exe|pyw))"\s+run\s+\S+\s*', re.I)
 COMMAND = "%command%"
 
 
@@ -85,6 +85,12 @@ def apply_ours(options: str, prefix: str) -> str:
         # e.g. '"nvse_loader.exe" %command%': we launch their wrapper, which launches the game.
         return f"{prefix} {base}"
     return f"{prefix} {COMMAND} {base}"
+
+
+def hooked_launcher(options: str) -> str | None:
+    """The QResLauncher our prefix in `options` runs, or None if there's no prefix of ours."""
+    match = _OURS.match(options)
+    return match.group(1) if match else None
 
 
 def option_state(options: str, prefix: str) -> str:

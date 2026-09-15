@@ -217,7 +217,7 @@ class GettingStarted(QDialog):
             self.qres_path.setText(os.path.normpath(path))
 
     def _refresh_playnite(self) -> None:
-        state = playnite.state(paths.launcher_command())
+        state = playnite.state(paths.hook_command())
         running = playnite.is_running()
         self.playnite_btn.setVisible(state in ("none", "outdated"))
         self.playnite_btn.setEnabled(not running)
@@ -233,7 +233,7 @@ class GettingStarted(QDialog):
 
     def _add_playnite(self) -> None:
         try:
-            playnite.install(paths.launcher_command())
+            playnite.install(paths.hook_command())
         except Exception as exc:
             QMessageBox.warning(self, "Playnite", str(exc))
         self._refresh_playnite()

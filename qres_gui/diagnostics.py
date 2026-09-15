@@ -15,7 +15,9 @@ something is already wrong, which is the worst time to raise.
 
 from __future__ import annotations
 
+import os
 import platform
+import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -56,12 +58,29 @@ def _yes(value: bool) -> str:
     return "yes" if value else "no"
 
 
+def _build() -> str:
+    if paths.is_installed_copy():
+        return "installed"
+    if getattr(sys, "frozen", False):
+        return "not installed (an unzipped or test copy)"
+    return "run from source"
+
+
+def _hooks_run() -> str:
+    """What Steam, Playnite and shortcuts start games through, and whose it is."""
+    cmd = subprocess.list2cmdline(paths.hook_command())
+    if paths.runs_installed_hooks():
+        return f"{cmd}  (the installed copy, not this one)"
+    return cmd
+
+
 def _app_section() -> Section:
-    build = "installed build" if getattr(sys, "frozen", False) else "run from source"
     return Section("QRes GUI", [
         _row("Version", lambda: f"{__version__}{'  (pre-release)' if __prerelease__ else ''}"),
-        _row("Build", lambda: build),
+        _row("Build", _build),
         _row("Program folder", paths.app_folder),
+        # The launcher is the command's last part: the .exe, or the .pyw from source.
+        _row("Games launch through", _hooks_run, ok=lambda _: os.path.isfile(paths.hook_command()[-1])),
         _row("Settings", paths.config_path),
         _row("Log", paths.log_path),
     ])
@@ -163,7 +182,7 @@ def _integrations_section(cfg: dict | None) -> Section:
         return f"{len(recent)} kept, newest {when}: {newest.get('title', '(no title)')}"
 
     return Section("Integrations", [
-        _row("Playnite", lambda: playnite.state(paths.launcher_command())),
+        _row("Playnite", lambda: playnite.state(paths.hook_command())),
         _row("Games configured", lambda: len(games)),
         _row("Notification history", events),
     ])

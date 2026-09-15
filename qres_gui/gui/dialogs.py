@@ -53,6 +53,19 @@ def _hint(text: str) -> QLabel:
     return label
 
 
+def launcher_hint() -> str:
+    """What starts games from Steam, Playnite and shortcuts, and why it's that one."""
+    if paths.is_installed_copy():
+        return "Steam, Playnite and shortcuts start games through this launcher."
+    if paths.runs_installed_hooks():
+        return ("This copy isn't the installed QRes GUI. Steam, Playnite and shortcuts keep using the "
+                "installed one, so games switch the way that version does; install this version to "
+                "try its launcher.")
+    return ("QRes GUI isn't installed, so Steam, Playnite and shortcuts start games from this folder. "
+            "Don't move or delete it while games are set up, or install QRes GUI so they point "
+            "somewhere that stays put.")
+
+
 def _indented_hint(text: str) -> QLabel:
     """A hint that belongs to the radio button above it."""
     label = _hint(text)
@@ -95,7 +108,7 @@ class SettingsDialog(QDialog):
         self.restore_delay = QDoubleSpinBox(suffix=" s", decimals=1, minimum=0, maximum=15, singleStep=0.5)
         self.restore_delay.setValue(float(cfg.get("restore_delay", 1.0)))
 
-        launcher = QLineEdit(subprocess.list2cmdline(paths.launcher_command()), readOnly=True)
+        launcher = QLineEdit(subprocess.list2cmdline(paths.hook_command()), readOnly=True)
         logs = QPushButton("Open log folder", clicked=lambda: QDesktopServices.openUrl(
             QUrl.fromLocalFile(str(paths.app_dir()))))
 
@@ -132,6 +145,7 @@ class SettingsDialog(QDialog):
                               "(turn on \"keep running in the tray\")."))
 
         form.addRow("Launcher", _browse_row(launcher, logs))
+        form.addRow("", _hint(launcher_hint()))
         # Hints go on their own rows under their buttons: beside a button, a
         # wrapped label doesn't get the height it needs and ends up cut off.
         form.addRow("Notifications", _left(QPushButton("Send test notification", clicked=self._test_notification)))
@@ -268,7 +282,7 @@ class PlayniteDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Playnite integration")
         self.setMinimumWidth(720)
-        self.cmd = paths.launcher_command()
+        self.cmd = paths.hook_command()
         pre, post = playnite.scripts(self.cmd)
 
         intro = QLabel(
