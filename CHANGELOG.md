@@ -6,14 +6,13 @@ it has been proven on real hardware.
 
 ## 1.3.0 — 2026-09-14
 
-**A pre-release.** Everything below is built against the Windows display APIs
-and covered by tests, but none of it has run against real hardware — an HDR
-display and a second monitor are both things CI doesn't have. Existing profiles
-are unaffected: HDR and display selection are off unless a profile asks for
-them, and a profile that names no display still means the primary one. The
-update check leaves pre-releases out, so no 1.x install is offered this
-automatically; download it from the releases page if you want to try it.
-Feedback on the HDR and multi-monitor paths is the point.
+HDR switching has been tested on a real HDR display: turned off for a game
+and put back on a normal quit, Steam's **Stop**, the game being killed in Task
+Manager, and **Restore desktop resolution** mid-game. Switching a second
+monitor hasn't been tried with more than one screen connected yet; reports
+welcome. Existing profiles are unaffected: HDR and display selection are off
+unless a profile asks for them, and a profile that names no display still
+means the primary one.
 
 ### Added
 - **Per-game HDR.** A game's profile can turn HDR on or off while it runs and

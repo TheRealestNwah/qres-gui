@@ -14,11 +14,14 @@ the Windows display API directly.
 > the game) launched from Steam and from Playnite: switching once, switching
 > back on quit, Steam's *Stop* button (closes the game and switches back), the
 > Steam overlay, launch options surviving a Steam restart, and a GOG game
-> (Stardew Valley) started from Playnite. Also the installer.
+> (Stardew Valley) started from Playnite. Also the installer. Per-game HDR on
+> an HDR ultrawide: turned off for the game and put back on a normal quit,
+> Steam's *Stop*, the game being killed in Task Manager, and **Restore desktop
+> resolution** mid-game.
 >
-> **Not yet tested on real hardware:** HDR switching (new in 1.3.0, which is
-> published as a pre-release for that reason). It's built to the Windows
-> DisplayConfig API and covered by tests, but no HDR display has run it.
+> **Not yet tested on real hardware:** switching a second monitor (per-game
+> display selection, new in 1.3.0). It's built to the Windows display API and
+> covered by tests, but hasn't been run with more than one screen connected.
 >
 > **Not yet tested on real installs:** anti-cheat games, and detection for
 > Epic / Ubisoft / Heroic / Amazon / EA / Battle.net / Xbox (built to those
