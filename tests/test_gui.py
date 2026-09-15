@@ -156,6 +156,19 @@ def test_filters(win):
     assert all(item.isHidden() for item in win.items.values())
 
 
+def test_dropdown_and_spin_box_arrows_are_drawn(qapp):
+    """#9: the stylesheet points at chevrons the theme painted, and they exist."""
+    import re
+    arrows = re.findall(r'url\("([^"]+)"\)', qapp.styleSheet())
+    assert any("chevron-down" in a for a in arrows) and any("chevron-up" in a for a in arrows)
+    assert all(Path(a).is_file() and Path(a.replace(".png", "@2x.png")).is_file() for a in arrows)
+
+
+def test_the_store_filter_is_a_pill_lined_up_with_the_search_box(win):
+    assert win.store_filter.objectName() == "pill"
+    assert win.store_filter.height() == win.search.height() == theme.PILL_HEIGHT
+
+
 def shown(win):
     return {g for g, item in win.items.items() if not item.isHidden()}
 

@@ -29,6 +29,13 @@ it has been proven on real hardware.
   offering a field that would be ignored. It used to be a tooltip.
 
 ### Fixed
+- **Dropdowns and number fields look like what they are**
+  ([#9](https://github.com/TheRealestNwah/qres-gui/issues/9)). Their outline all
+  but vanished against the window, a dropdown's arrow sat in a box of its own,
+  and the **Wait** fields in Settings had no visible up/down buttons at all.
+  Fields now have a border you can see, dropdowns a chevron, number fields
+  proper arrows, and disabled ones grey out. The store filter above the game
+  list is a single pill, so it reads as a dropdown at a glance.
 - **Running a copy of QRes GUI that isn't the installed one no longer takes
   over your games' hooks** ([#12](https://github.com/TheRealestNwah/qres-gui/issues/12)).
   An unzipped download or a test build used to call every Steam launch option
