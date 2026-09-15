@@ -911,7 +911,16 @@ class MainWindow(QMainWindow):
             # An import can touch every profile, every preset and the hotkeys,
             # so everything that reads them is rebuilt rather than patched.
             self._save_now()
-            self.refresh_rows()
+            if dialog.summary and dialog.summary.games_listed_changed:
+                # Hand-added games live only in their profiles, so one coming or
+                # going changes the list itself; a rescan rebuilds it and
+                # reloads whichever game is selected.
+                self.rescan()
+            else:
+                self.refresh_rows()
+                # The panel reads a profile when its game is selected, so without
+                # this it keeps showing what the import just replaced.
+                self.detail.show_game(self.detail.game)
             self._sync_tray()
             self._refresh_presets()
             failed = self.apply_hotkeys()

@@ -46,8 +46,14 @@ PORTABLE_SETTINGS = (
 # A game profile's portable half. "launch" rides along for manual games only,
 # which own it - a store game's copy is rewritten by the next rescan.
 PORTABLE_GAME = ("name", "store", "enabled", "width", "height", "refresh", "hdr",
-                 "watch", "extra_args")
+                 "watch", "extra_args", "quick_restore")
 PORTABLE_PRESET = ("name", "width", "height", "refresh", "hotkey")
+
+# The fields the first exports carried, before they said which ones they carry.
+# A restore only clears a field the file could have held: an older backup that
+# says nothing about a newer setting isn't saying "turn it off".
+_FIRST_GAME_FIELDS = ("name", "store", "enabled", "width", "height", "refresh", "hdr",
+                      "watch", "extra_args")
 
 
 class TransferError(RuntimeError):
@@ -60,16 +66,27 @@ class Summary:
     games_added: int = 0
     games_updated: int = 0
     presets_added: int = 0
+    presets_updated: int = 0
     settings_applied: int = 0
     displays_kept: int = 0
     displays_dropped: list[str] = field(default_factory=list)   # profile names
     manual_games: list[str] = field(default_factory=list)       # names whose paths need checking
     hotkeys_dropped: list[str] = field(default_factory=list)    # presets whose shortcut was taken
+    # Only a restore removes anything.
+    games_removed: list[str] = field(default_factory=list)      # profiles set up since the backup
+    manual_removed: list[str] = field(default_factory=list)     # hand-added games since the backup
+    presets_removed: list[str] = field(default_factory=list)
 
     @property
     def changed(self) -> bool:
         return bool(self.games_added or self.games_updated or self.presets_added
-                    or self.settings_applied)
+                    or self.presets_updated or self.settings_applied or self.games_removed
+                    or self.manual_removed or self.presets_removed)
+
+    @property
+    def games_listed_changed(self) -> bool:
+        """Whether hand-added games came or went, which only a rescan shows."""
+        return bool(self.manual_games or self.manual_removed)
 
     def lines(self) -> list[str]:
         """Plain sentences for a dialog, in the order that matters."""
@@ -81,8 +98,18 @@ class Summary:
         out = []
         if self.games_added or self.games_updated:
             out.append(f"{self.games_added} game profile(s) added, {self.games_updated} updated.")
-        if self.presets_added:
-            out.append(f"{self.presets_added} preset(s) added.")
+        if self.games_removed:
+            out.append(f"{len(self.games_removed)} game profile(s) set up since this backup removed, so "
+                       f"those games go back to not switching: {', '.join(sorted(self.games_removed))}.")
+        if self.manual_removed:
+            out.append(f"{len(self.manual_removed)} game(s) added by hand since this backup taken off the "
+                       f"list (shortcuts made for them will stop working): "
+                       f"{', '.join(sorted(self.manual_removed))}.")
+        if self.presets_added or self.presets_updated:
+            out.append(f"{self.presets_added} preset(s) added, {self.presets_updated} updated.")
+        if self.presets_removed:
+            out.append(f"{len(self.presets_removed)} preset(s) removed: "
+                       f"{', '.join(sorted(self.presets_removed))}.")
         if self.settings_applied:
             out.append(f"{self.settings_applied} setting(s) applied.")
         if self.displays_kept:
@@ -165,6 +192,9 @@ def export_data(cfg: dict) -> dict:
         "format": FORMAT,
         "app_version": __version__,
         "exported": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        # Which profile fields this file speaks for, so a restore from it
+        # clears only those (see _FIRST_GAME_FIELDS).
+        "game_fields": list(PORTABLE_GAME),
         "settings": {key: cfg[key] for key in PORTABLE_SETTINGS if key in cfg},
         "games": games,
         "presets": presets,
@@ -227,10 +257,7 @@ def merge(cfg: dict, data: dict, *, games: bool = True, presets: bool = True,
     summary = Summary()
 
     if settings:
-        for key, value in (data.get("settings") or {}).items():
-            if key in PORTABLE_SETTINGS and cfg.get(key) != value:
-                cfg[key] = value
-                summary.settings_applied += 1
+        _apply_settings(cfg, data, summary)
 
     if games:
         cfg.setdefault("games", {})
@@ -250,7 +277,7 @@ def merge(cfg: dict, data: dict, *, games: bool = True, presets: bool = True,
                 existing.update(keep)
                 # Only count a profile that actually moved: re-importing the same
                 # file must preview as "nothing to change", not as work to approve.
-                if existing != before:
+                if not _same_profile(existing, before):
                     summary.games_updated += 1
             else:
                 cfg["games"][game_id] = entry
@@ -284,3 +311,118 @@ def merge(cfg: dict, data: dict, *, games: bool = True, presets: bool = True,
             summary.presets_added += 1
 
     return summary
+
+
+def restore(cfg: dict, data: dict, *, games: bool = True, presets: bool = True,
+            settings: bool = True) -> Summary:
+    """Make `cfg` match `data` again, and say what that changed.
+
+    What a backup is for: undoing what's happened since. Unlike `merge`, a
+    profile set up after the backup is removed - the game goes back to never
+    having been set up - and so is a setting within a profile the backup
+    didn't have, such as an HDR choice made since. Presets are replaced
+    outright. As in `merge`, a store game keeps this machine's `launch` and
+    `install_dir`: the backup never had them.
+    """
+    summary = Summary()
+
+    if settings:
+        _apply_settings(cfg, data, summary)
+
+    # A file without a section doesn't speak for it; restoring "nothing" over
+    # every profile would be a strange reading of a hand-trimmed file.
+    if games and "games" in data:
+        _restore_games(cfg, data, summary)
+
+    if presets and "presets" in data:
+        _restore_presets(cfg, data, summary)
+
+    return summary
+
+
+# What a profile means when it doesn't mention these: an older profile has no
+# key where a restored one has the empty value, and that's the same choice.
+_PROFILE_DEFAULTS = {"display": "", "hdr": None, "extra_args": "", "quick_restore": False, "watch": []}
+
+
+def _same_profile(a: dict, b: dict) -> bool:
+    return {**_PROFILE_DEFAULTS, **a} == {**_PROFILE_DEFAULTS, **b}
+
+
+def _apply_settings(cfg: dict, data: dict, summary: Summary) -> None:
+    for key, value in (data.get("settings") or {}).items():
+        if key in PORTABLE_SETTINGS and cfg.get(key) != value:
+            cfg[key] = value
+            summary.settings_applied += 1
+
+
+def _game_fields(data: dict) -> set[str]:
+    """The profile fields a file speaks for; older files didn't say."""
+    declared = data.get("game_fields")
+    if not isinstance(declared, list) or not all(isinstance(f, str) for f in declared):
+        declared = _FIRST_GAME_FIELDS
+    return set(declared) & set(PORTABLE_GAME)
+
+
+def _restore_games(cfg: dict, data: dict, summary: Summary) -> None:
+    games = cfg.setdefault("games", {})
+    wanted = {gid: entry for gid, saved in (data.get("games") or {}).items()
+              if (entry := _clean_game(saved)) is not None}
+    # Clearable: what the file speaks for, less what names the game.
+    clearable = _game_fields(data) - {"name", "store"}
+
+    for game_id in [gid for gid in games if gid not in wanted]:
+        entry = games.pop(game_id)
+        name = (entry.get("name") if isinstance(entry, dict) else None) or game_id
+        manual = isinstance(entry, dict) and entry.get("store") == "manual"
+        (summary.manual_removed if manual else summary.games_removed).append(name)
+
+    for game_id, entry in wanted.items():
+        label = entry.get("name") or game_id
+        entry["display"] = _resolve_display((data["games"][game_id] or {}).get("display"), summary, label)
+        existing = games.get(game_id)
+        if not isinstance(existing, dict):
+            games[game_id] = entry
+            if entry.get("store") == "manual":
+                summary.manual_games.append(label)
+            summary.games_added += 1
+            continue
+        before = dict(existing)
+        for key in clearable:
+            if key not in entry:
+                existing.pop(key, None)
+        existing.update(entry)
+        if not _same_profile(existing, before):
+            summary.games_updated += 1
+
+
+def _restore_presets(cfg: dict, data: dict, summary: Summary) -> None:
+    # The presets being replaced don't hold their shortcuts any more, so only
+    # the restore hotkey (as it stands after the settings) and presets taken
+    # from the file already can be in the way.
+    taken = {cfg.get("restore_hotkey") or None}
+    restored = []
+    for saved in (data.get("presets") or []):
+        if not isinstance(saved, dict):
+            continue
+        preset = {key: saved[key] for key in PORTABLE_PRESET if key in saved}
+        if preset.get("hotkey") and preset["hotkey"] in taken:
+            summary.hotkeys_dropped.append(preset.get("name") or "a preset")
+            preset["hotkey"] = ""
+        elif preset.get("hotkey"):
+            taken.add(preset["hotkey"])
+        preset["display"] = _resolve_display(saved.get("display"), summary, preset.get("name") or "a preset")
+        restored.append(preset)
+
+    current = [p for p in (cfg.get("presets") or []) if isinstance(p, dict)]
+    by_name = {p.get("name"): p for p in current}
+    restored_names = {p.get("name") for p in restored}
+    for preset in restored:
+        old = by_name.get(preset.get("name"))
+        if old is None:
+            summary.presets_added += 1
+        elif {"display": "", "hotkey": "", **old} != {"hotkey": "", **preset}:
+            summary.presets_updated += 1
+    summary.presets_removed.extend(p.get("name") or "a preset" for p in current
+                                   if p.get("name") not in restored_names)
+    cfg["presets"] = restored

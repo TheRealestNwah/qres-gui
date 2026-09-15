@@ -815,6 +815,65 @@ def test_transfer_reports_a_bad_file_without_touching_the_config(win, monkeypatc
     assert said and "isn't a QRes GUI profile export" in said[0]
 
 
+def _import_through_dialog(win, monkeypatch, path, merge=False):
+    dialog = TransferDialog(win, win.cfg)
+    monkeypatch.setattr("qres_gui.gui.dialogs.QFileDialog.getOpenFileName", lambda *a, **k: (str(path), ""))
+    if merge:
+        dialog.merge_mode.setChecked(True)
+    dialog._import()
+    return dialog
+
+
+def test_transfer_restores_by_default_and_removes_what_came_since(win, monkeypatch, tmp_path):
+    win.cfg["games"]["steam:10"] = {"name": "Counter Test", "store": "steam", "enabled": True,
+                                    "width": 2560, "height": 1440, "refresh": 0}
+    out = transfer.write_export(win.cfg, tmp_path / "profiles.json")
+    win.cfg["games"]["gog:1453375253"] = {"name": "Stardew Valley", "store": "gog", "enabled": True,
+                                          "width": 1920, "height": 1080, "refresh": 0}
+    dialog = _import_through_dialog(win, monkeypatch, out)
+    assert dialog.restore_mode.isChecked() and dialog.imported
+    assert "gog:1453375253" not in win.cfg["games"] and "steam:10" in win.cfg["games"]
+    assert dialog.summary.games_removed == ["Stardew Valley"]
+
+
+def test_transfer_merge_keeps_what_came_since(win, monkeypatch, tmp_path):
+    win.cfg["games"]["steam:10"] = {"name": "Counter Test", "store": "steam", "enabled": True,
+                                    "width": 2560, "height": 1440, "refresh": 0}
+    out = transfer.write_export(win.cfg, tmp_path / "profiles.json")
+    win.cfg["games"]["steam:10"]["width"] = 1920
+    win.cfg["games"]["gog:1453375253"] = {"name": "Stardew Valley", "store": "gog", "enabled": True,
+                                          "width": 1920, "height": 1080, "refresh": 0}
+    _import_through_dialog(win, monkeypatch, out, merge=True)
+    assert win.cfg["games"]["steam:10"]["width"] == 2560 and "gog:1453375253" in win.cfg["games"]
+
+
+def test_the_game_panel_shows_what_an_import_restored(win, monkeypatch, tmp_path):
+    """QA found the panel kept showing the old refresh rate until another game was clicked."""
+    win.cfg["games"]["steam:10"] = {"name": "Counter Test", "store": "steam", "enabled": True,
+                                    "width": 2560, "height": 1440, "refresh": 0}
+    out = transfer.write_export(win.cfg, tmp_path / "profiles.json")
+    select(win, "steam:10")
+    win.detail.rate_combo.setCurrentIndex(win.detail.rate_combo.findData(60))
+    assert win.cfg["games"]["steam:10"]["refresh"] == 60
+
+    monkeypatch.setattr("qres_gui.gui.dialogs.QFileDialog.getOpenFileName", lambda *a, **k: (str(out), ""))
+    monkeypatch.setattr(TransferDialog, "exec", lambda self: self._import())
+    win.open_transfer()
+    assert win.cfg["games"]["steam:10"]["refresh"] == 0
+    assert int(win.detail.rate_combo.currentData() or 0) == 0
+
+
+def test_settings_scroll_and_never_open_taller_than_the_screen(win):
+    """On 1080p the form is taller than the screen; OK and Cancel must stay reachable."""
+    dialog = SettingsDialog(win, win.cfg, win.modes, on_playnite=lambda: None, on_remove_hooks=lambda: None,
+                            on_check_updates=lambda: (None, None), on_guide=lambda: None,
+                            on_diagnostics=lambda: None, on_transfer=lambda: None)
+    assert dialog.scroll.widget().isAncestorOf(dialog.qres)
+    ok = next(b for b in dialog.findChildren(main_window.QPushButton) if b.text() == "OK")
+    assert not dialog.scroll.widget().isAncestorOf(ok)
+    assert dialog.height() <= dialog.screen().availableGeometry().height()
+
+
 def test_settings_dialog_applies(win):
     dialog = SettingsDialog(win, win.cfg, win.modes)
     dialog.qres.setText(r"D:\Tools\QRes.exe")

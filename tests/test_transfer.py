@@ -238,3 +238,123 @@ def test_nothing_to_change_says_so(two_screens, cfg, tmp_path):
     transfer.merge(target, data)
     again = transfer.merge(target, data)
     assert not again.changed and "Nothing to change" in again.lines()[0]
+
+
+# --- restore: undoing what happened since the backup -------------------------
+
+def _backup(cfg, tmp_path):
+    return transfer.read_export(transfer.write_export(cfg, tmp_path / "backup.json"))
+
+
+def test_restore_removes_a_profile_set_up_since_the_backup(two_screens, cfg, tmp_path):
+    """The case QA hit: back up, set up a new game, restore - the new game must go."""
+    data = _backup(cfg, tmp_path)
+    cfg["games"]["steam:379430"] = {"name": "Kingdom Come: Deliverance", "store": "steam",
+                                    "enabled": True, "width": 1600, "height": 1200, "refresh": 75,
+                                    "hdr": False, "launch": {"type": "uri", "uri": "steam://run/379430"}}
+    summary = transfer.restore(cfg, data)
+    assert "steam:379430" not in cfg["games"]
+    assert summary.games_removed == ["Kingdom Come: Deliverance"]
+    assert any("Kingdom Come: Deliverance" in line and "removed" in line for line in summary.lines())
+
+
+def test_merge_still_leaves_a_profile_set_up_since_alone(two_screens, cfg, tmp_path):
+    """Merge is for another PC: it never takes anything away."""
+    data = _backup(cfg, tmp_path)
+    cfg["games"]["steam:379430"] = {"name": "KCD", "store": "steam", "enabled": True}
+    transfer.merge(cfg, data)
+    assert "steam:379430" in cfg["games"]
+
+
+def test_restore_puts_a_changed_profile_back(two_screens, cfg, tmp_path):
+    data = _backup(cfg, tmp_path)
+    cfg["games"]["steam:620"]["refresh"] = 60
+    summary = transfer.restore(cfg, data)
+    assert cfg["games"]["steam:620"]["refresh"] == 0 and summary.games_updated == 1
+
+
+def test_restore_clears_a_setting_made_since_the_backup(two_screens, cfg, tmp_path):
+    """A backup without extra arguments means none, not "whatever's there now"."""
+    del cfg["games"]["steam:620"]["extra_args"]
+    data = _backup(cfg, tmp_path)
+    cfg["games"]["steam:620"]["extra_args"] = "-dx12"
+    transfer.restore(cfg, data)
+    assert "extra_args" not in cfg["games"]["steam:620"]
+
+
+def test_restore_keeps_this_pcs_half_of_a_store_profile(two_screens, cfg, tmp_path):
+    data = _backup(cfg, tmp_path)
+    transfer.restore(cfg, data)
+    assert cfg["games"]["steam:620"]["launch"] == {"type": "uri", "uri": "steam://run/620"}
+    assert cfg["games"]["steam:620"]["install_dir"] == r"C:\Steam\Portal 2"
+
+
+def test_restore_takes_a_game_added_by_hand_since_off_the_list(two_screens, cfg, tmp_path):
+    data = _backup(cfg, tmp_path)
+    cfg["games"]["manual:2"] = {"name": "Added Later", "store": "manual", "enabled": True,
+                                "launch": {"type": "exe", "path": r"D:\Games\later.exe"}}
+    summary = transfer.restore(cfg, data)
+    assert "manual:2" not in cfg["games"]
+    assert summary.manual_removed == ["Added Later"] and summary.games_listed_changed
+    assert any("shortcuts made for them will stop working" in line for line in summary.lines())
+
+
+def test_switch_back_the_moment_it_closes_travels_now(two_screens, cfg, tmp_path):
+    cfg["games"]["steam:620"]["quick_restore"] = True
+    data = _backup(cfg, tmp_path)
+    assert data["games"]["steam:620"]["quick_restore"] is True
+    assert "quick_restore" in data["game_fields"]
+    cfg["games"]["steam:620"]["quick_restore"] = False
+    transfer.restore(cfg, data)
+    assert cfg["games"]["steam:620"]["quick_restore"] is True
+
+
+def test_an_older_backup_doesnt_wipe_a_field_it_never_carried(two_screens, cfg, tmp_path):
+    """Exports made before quick_restore travelled say nothing about it - so leave it."""
+    data = _backup(cfg, tmp_path)
+    del data["game_fields"]
+    cfg["games"]["steam:620"]["quick_restore"] = True
+    transfer.restore(cfg, data)
+    assert cfg["games"]["steam:620"]["quick_restore"] is True
+
+
+def test_restore_replaces_presets(two_screens, cfg, tmp_path):
+    data = _backup(cfg, tmp_path)
+    cfg["presets"][0]["width"] = 1920                                    # changed since
+    cfg["presets"].append({"name": "New", "width": 1280, "height": 800, "refresh": 0})   # added since
+    summary = transfer.restore(cfg, data)
+    assert [p["name"] for p in cfg["presets"]] == ["Tall"] and cfg["presets"][0]["width"] == 2560
+    assert summary.presets_updated == 1 and summary.presets_removed == ["New"]
+
+
+def test_a_restored_presets_shortcut_only_gives_way_to_the_restore_hotkey(two_screens, cfg, tmp_path):
+    """The presets being replaced don't count as holding their shortcuts any more."""
+    data = _backup(cfg, tmp_path)
+    cfg["presets"] = [{"name": "Other", "width": 1920, "height": 1080, "refresh": 0, "hotkey": "Ctrl+Alt+1"}]
+    summary = transfer.restore(cfg, data)
+    assert cfg["presets"][0]["hotkey"] == "Ctrl+Alt+1" and not summary.hotkeys_dropped
+
+
+def test_restoring_the_same_state_says_nothing_to_change(two_screens, cfg, tmp_path):
+    """Including a profile saved before displays and HDR existed: absent means the default."""
+    data = _backup(cfg, tmp_path)
+    transfer.restore(cfg, data)
+    for key in ("display", "hdr"):
+        cfg["games"]["manual:1"].pop(key, None)
+    assert not transfer.restore(cfg, data).changed
+
+
+def test_restore_leaves_sections_it_wasnt_asked_about(two_screens, cfg, tmp_path):
+    data = _backup(cfg, tmp_path)
+    cfg["games"]["steam:379430"] = {"name": "KCD", "store": "steam", "enabled": True}
+    cfg["presets"].append({"name": "New", "width": 1280, "height": 800, "refresh": 0})
+    transfer.restore(cfg, data, games=False, presets=False)
+    assert "steam:379430" in cfg["games"] and len(cfg["presets"]) == 2
+
+
+def test_a_file_without_a_games_section_doesnt_wipe_every_profile(two_screens, cfg, tmp_path):
+    data = _backup(cfg, tmp_path)
+    del data["games"], data["presets"]
+    summary = transfer.restore(cfg, data)
+    assert set(cfg["games"]) == {"steam:620", "manual:1"} and len(cfg["presets"]) == 1
+    assert not summary.games_removed and not summary.presets_removed

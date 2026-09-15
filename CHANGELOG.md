@@ -6,13 +6,17 @@ it has been proven on real hardware.
 
 ## 1.5.0 — 2026-09-14
 
-Also a pre-release: it carries 1.3.0's HDR and multi-monitor code, which still
-hasn't run on real hardware.
-
 ### Added
 - **Back up and restore profiles** (Settings › Profiles › **Back up and
   restore…**). Export your game profiles, presets and settings to a file, and
   import them on another PC or after a reinstall.
+
+  Importing works one of two ways. **Restore**, the default, makes everything
+  match the file: profiles and presets set up since it was made are removed, and
+  so is a setting within a profile the backup didn't have. **Merge** adds and
+  updates what the file names and removes nothing, for bringing profiles to
+  another PC. The summary before you apply lists everything that will be
+  removed, including games you added by hand, which come off the list.
 
   An export carries only what means the same thing anywhere. It leaves out
   where QRes.exe is, your desktop resolution and the update-check state, and
@@ -21,14 +25,18 @@ hasn't run on real hardware.
   that isn't there. Games added by hand keep their path, since they have no
   store to be found from.
 
-  Importing matches games by their store ID, so it updates the profiles the
-  file names and leaves your other games alone; a profile's own `launch` block
+  Games are matched by their store ID, and a store game's own `launch` block
   is never overwritten. A display a profile names is kept only when a monitor
   of the same name *and* number is connected here, and otherwise falls back to
   the primary display — `\\.\DISPLAY2` is a different monitor on a different
   PC, and switching the wrong screen is worse than switching none. A preset
   whose shortcut is already in use here comes in without one. Nothing is
   applied until you've seen a summary of exactly what will change.
+
+### Fixed
+- **Settings** scrolls instead of growing past the bottom of the screen. On a
+  1080p display, or with Windows scaling, OK and Cancel ended up out of reach;
+  they now stay put below the settings.
 
 ## 1.4.0 — 2026-09-14
 

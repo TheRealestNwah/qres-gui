@@ -8,8 +8,8 @@ from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-    QFormLayout, QHBoxLayout, QKeySequenceEdit, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
-    QVBoxLayout, QWidget,
+    QFormLayout, QFrame, QHBoxLayout, QKeySequenceEdit, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+    QPushButton, QRadioButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from .. import __version__, diagnostics, display, notify, paths, playnite, transfer
@@ -50,6 +50,13 @@ def _hint(text: str) -> QLabel:
     # The form sizes wrapped labels for their minimum width; without a realistic
     # one it reserves room for extra lines and leaves gaps around the text.
     label.setMinimumWidth(460)
+    return label
+
+
+def _indented_hint(text: str) -> QLabel:
+    """A hint that belongs to the radio button above it."""
+    label = _hint(text)
+    label.setContentsMargins(24, 0, 0, 4)
     return label
 
 
@@ -178,14 +185,36 @@ class SettingsDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+
+        # The settings scroll and OK / Cancel stay put: on a 1080p screen, or
+        # with Windows scaling, the whole form is taller than the screen and
+        # the buttons would otherwise end up below it.
+        page = QWidget(objectName="settingsPage")
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 10, 0)   # room for the scroll bar
+        page_layout.addLayout(form)
+        page_layout.addStretch()
+        self.scroll = QScrollArea(objectName="settingsScroll", widgetResizable=True,
+                                  frameShape=QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setWidget(page)
+
         layout = QVBoxLayout(self)
-        layout.addLayout(form)
+        layout.addWidget(self.scroll, 1)
         layout.addWidget(buttons)
-        # Open exactly as tall as the wrapped hints need at this width; a taller
-        # window spreads the spare height over them as gaps.
+
+        # Open exactly as tall as the wrapped hints need at this width - a taller
+        # window spreads the spare height over them as gaps - but never taller
+        # than the screen it opens on.
         width = self.minimumWidth()
-        self.resize(width, layout.totalHeightForWidth(width) if layout.hasHeightForWidth()
-                    else self.sizeHint().height())
+        margins = layout.contentsMargins()
+        inner = width - margins.left() - margins.right()
+        content = (page_layout.totalHeightForWidth(inner) if page_layout.hasHeightForWidth()
+                   else page.sizeHint().height())
+        chrome = margins.top() + margins.bottom() + layout.spacing() + buttons.sizeHint().height()
+        screen = (parent.screen() if parent is not None else None) or QApplication.primaryScreen()
+        room = int(screen.availableGeometry().height() * 0.9) - 40 if screen else content + chrome
+        self.resize(width, min(content + chrome, room))
 
     def _check_now(self) -> None:
         release, error = self.on_check_updates()
@@ -374,6 +403,7 @@ class TransferDialog(QDialog):
         self.setMinimumWidth(640)
         self.cfg = cfg
         self.imported = False        # the caller reloads its views only if this is True
+        self.summary: transfer.Summary | None = None   # what the import did, once it has
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -392,19 +422,29 @@ class TransferDialog(QDialog):
         row.addStretch()
         layout.addLayout(row)
 
+        layout.addWidget(QLabel("Importing:", objectName="caption"))
+        self.restore_mode = QRadioButton("Restore — make everything match the file", checked=True)
+        self.merge_mode = QRadioButton("Merge — add and update from the file, keep everything else")
+        layout.addWidget(self.restore_mode)
+        layout.addWidget(_indented_hint(
+            "For undoing changes. Profiles and presets set up since the file was made are removed."))
+        layout.addWidget(self.merge_mode)
+        layout.addWidget(_indented_hint(
+            "For bringing profiles to another PC. Nothing already here is removed."))
+
         self.what = QVBoxLayout()
         self.games = QCheckBox("Game profiles", checked=True)
         self.presets = QCheckBox("Presets", checked=True)
         self.settings = QCheckBox("Settings", checked=True)
         for box in (self.games, self.presets, self.settings):
             self.what.addWidget(box)
-        layout.addWidget(QLabel("Import brings in:", objectName="caption"))
+        layout.addWidget(QLabel("Include:", objectName="caption"))
         layout.addLayout(self.what)
         layout.addWidget(_hint(
-            "Importing matches games by their store ID, so it updates the profiles the file "
-            "mentions and leaves your other games alone. A display a profile names is kept only "
-            "if a monitor of the same name and number is connected here — otherwise that profile "
-            "uses the primary display rather than guessing at the wrong screen."))
+            "Games are matched by their store ID. A display a profile names is kept only if a "
+            "monitor of the same name and number is connected here — otherwise that profile uses "
+            "the primary display rather than guessing at the wrong screen. You'll see exactly "
+            "what will change before anything does."))
 
         close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         close.rejected.connect(self.reject)
@@ -436,20 +476,22 @@ class TransferDialog(QDialog):
             return
 
         # Say what it would do before doing it: an import rewrites profiles the
-        # user may have spent a while on.
-        preview = transfer.merge(deepcopy(self.cfg), data, games=self.games.isChecked(),
-                                 presets=self.presets.isChecked(), settings=self.settings.isChecked())
+        # user may have spent a while on, and a restore can remove some.
+        apply = transfer.restore if self.restore_mode.isChecked() else transfer.merge
+        title = "Restore" if self.restore_mode.isChecked() else "Merge"
+        sections = dict(games=self.games.isChecked(), presets=self.presets.isChecked(),
+                        settings=self.settings.isChecked())
+        preview = apply(deepcopy(self.cfg), data, **sections)
         when = data.get("exported", "an unknown date")
         body = f"From a QRes GUI {data.get('app_version', '?')} export made {when}.\n\n" + \
                "\n".join(f"• {line}" for line in preview.lines())
         if not preview.changed:
-            QMessageBox.information(self, "Import", body)
+            QMessageBox.information(self, title, body)
             return
-        if QMessageBox.question(self, "Import", body + "\n\nApply this?") != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, title, body + "\n\nApply this?") != QMessageBox.StandardButton.Yes:
             return
 
-        transfer.merge(self.cfg, data, games=self.games.isChecked(),
-                       presets=self.presets.isChecked(), settings=self.settings.isChecked())
+        self.summary = apply(self.cfg, data, **sections)
         self.imported = True
         self.accept()
 
