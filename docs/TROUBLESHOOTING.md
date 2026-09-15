@@ -1,11 +1,11 @@
 # Troubleshooting
 
-Start with **Settings › Diagnostics…**: it shows what QRes GUI can actually see
+Start with **Settings › Help & About › Diagnostics…**: it shows what QRes GUI can actually see
 — which QRes.exe it found, every display and the mode it's running, whether HDR
 is available on each and why not when it isn't, and any switch being tracked
 right now. **Copy for a bug report** puts the lot on the clipboard.
 
-Then the log: **Settings › Open log folder**, then open `launcher.log`
+Then the log: **Settings › Integrations › Open log folder**, then open `launcher.log`
 (`%APPDATA%\QResGUI\launcher.log`). Every launch writes what it switched,
 which processes it followed and when it switched back. When reporting a
 problem, include the diagnostics and the lines from that launch.
@@ -83,7 +83,7 @@ closed and QRes thought the game was done.
   Playnite and shortcuts keep using your *installed* copy, so nothing breaks
   when you delete the test folder. The flip side is that games launch the way
   the installed version works; to try a new version's switching, install it
-  (`install.cmd`). **Settings › Launcher** and **Diagnostics** say which copy
+  (`install.cmd`). **Settings › Integrations › Launcher** and **Diagnostics** say which copy
   games launch through. With nothing installed, hooks point at the copy you're
   running, so don't move or delete its folder while games are set up.
 - A backup of Steam's `localconfig.vdf` is kept next to it (the last five),
@@ -91,7 +91,7 @@ closed and QRes thought the game was done.
 
 ## Playnite
 
-- **Nothing switches:** check **Settings › Playnite integration…** says the
+- **Nothing switches:** check **Settings › Integrations › Playnite integration…** says the
   scripts are added (Playnite must be closed while QRes changes them). Then
   make sure the game has a profile with switching turned on.
 - **A game isn't in QRes GUI:** start it from Playnite once. QRes lists games
@@ -103,7 +103,7 @@ closed and QRes thought the game was done.
 
 Windows holds notifications back while a fullscreen game has focus (and when
 Do Not Disturb is on); they wait in the notification centre, and QRes GUI
-shows the latest one in a banner. **Settings › Send test notification** checks
+shows the latest one in a banner. **Settings › Integrations › Send test notification** checks
 they work at all.
 
 ## The update check
@@ -126,7 +126,7 @@ leave you stuck.
 
 ## The wrong screen switched, or nothing switched
 
-**Settings › Diagnostics…** lists every display Windows reports, which one is
+**Settings › Help & About › Diagnostics…** lists every display Windows reports, which one is
 primary, and the mode each is running — start there if you aren't sure which
 screen is which.
 
@@ -148,7 +148,7 @@ QRes GUI only offers HDR where Windows says it's available on the display the
 profile names — the primary one unless you picked another. The greyed-out
 control says which of these it is:
 
-**Settings › Diagnostics…** lists every display with its HDR state and the same
+**Settings › Help & About › Diagnostics…** lists every display with its HDR state and the same
 reason, which is quicker than checking one profile at a time.
 
 - *This version of Windows doesn't have the HDR display setting* — it needs
@@ -192,7 +192,7 @@ The game's **Extra arguments** box says where they apply for that game. In short
 
 ## QRes.exe isn't found
 
-Point **Settings › QRes.exe** at it, or copy `QRes.exe` into the install
+Point **Settings › General › QRes.exe** at it, or copy `QRes.exe` into the install
 folder. Without QRes, switching falls back to Windows' own display API.
 
 ## Windows or antivirus warns about the download
@@ -240,6 +240,6 @@ whether it was on, so restoring it doesn't turn it off.
 
 ## Removing QRes GUI
 
-**Settings › Remove all hooks…** takes QRes out of Steam's launch options and
+**Settings › Integrations › Remove all hooks…** takes QRes out of Steam's launch options and
 Playnite's scripts and deletes the game shortcuts. Uninstalling from
 *Settings › Apps* does the same first, then removes the program.

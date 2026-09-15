@@ -87,7 +87,7 @@ class GettingStarted(QDialog):
                   "profile names one.<br>"
                   "•&nbsp; Switches aren't saved to Windows, so even a crash or reboot comes back at "
                   "your normal resolution."),
-            _text("This takes about a minute. You can reopen it from <b>Settings › Getting started</b>.",
+            _text("This takes about a minute. You can reopen it from <b>Settings › Help &amp; About › Getting started</b>.",
                   muted=True),
         )
 

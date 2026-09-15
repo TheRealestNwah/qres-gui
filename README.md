@@ -89,7 +89,7 @@ While anything is hidden, the line under the list says how many, with a
 
 ### Playnite
 
-**Settings › Playnite integration… › Add to Playnite** adds a short block to
+**Settings › Integrations › Playnite integration… › Add to Playnite** adds a short block to
 Playnite's global *before starting a game* and *after exiting a game* scripts,
 after any lines of your own. Playnite has to be closed, because it saves its
 settings when it exits, and a backup is kept. Or copy the blocks from the same
@@ -215,11 +215,11 @@ or the guard had to step in, you get a Windows notification. The game still
 starts at your current resolution if switching failed. While a fullscreen
 game has focus, Windows holds notifications in the notification centre
 instead of popping them up, so QRes GUI also shows the latest one in a banner
-until you dismiss it. **Settings › Send test notification** checks they work.
+until you dismiss it. **Settings › Integrations › Send test notification** checks they work.
 
 ### Backing up profiles
 
-**Settings › Profiles › Back up and restore…** exports your game profiles,
+**Settings › Help & About › Back up and restore…** exports your game profiles,
 presets and settings to a file you can keep or carry to another PC. It leaves
 out everything that only describes this machine — where QRes.exe is, the
 desktop resolution, and the paths the stores report, which a rescan fills in
@@ -236,7 +236,7 @@ than aiming at whichever screen happens to be second.
 
 ### Diagnostics
 
-**Settings › Diagnostics…** shows what QRes GUI can see: its version and where
+**Settings › Help & About › Diagnostics…** shows what QRes GUI can see: its version and where
 it keeps its settings and log, the Windows build, which QRes.exe it found, every
 connected display with the mode it's running, whether HDR is available on each —
 and the reason in Windows' own words when it isn't — any switch being tracked
@@ -286,7 +286,7 @@ now**, under **Settings › Updates**.
 
 ### Removing it
 
-- **Settings › Remove all hooks…** takes QRes out of every Steam game's launch
+- **Settings › Integrations › Remove all hooks…** takes QRes out of every Steam game's launch
   options (keeping your own options) and out of Playnite's scripts (keeping
   your own lines), deletes the game shortcuts and turns switching off.
 - **Uninstall** from *Settings › Apps* (or run `uninstall.ps1` in the install

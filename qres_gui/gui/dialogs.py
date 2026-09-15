@@ -9,7 +9,7 @@ from PySide6.QtGui import QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
     QFormLayout, QFrame, QHBoxLayout, QKeySequenceEdit, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
-    QPushButton, QRadioButton, QScrollArea, QVBoxLayout, QWidget,
+    QPushButton, QRadioButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from .. import __version__, diagnostics, display, notify, paths, playnite, transfer
@@ -51,6 +51,21 @@ def _hint(text: str) -> QLabel:
     # one it reserves room for extra lines and leaves gaps around the text.
     label.setMinimumWidth(460)
     return label
+
+
+def _button_row(*widgets: QWidget) -> QHBoxLayout:
+    """A row of buttons (and maybe a label) with room between them; they used to touch."""
+    row = QHBoxLayout()
+    row.setSpacing(8)
+    for widget in widgets:
+        row.addWidget(widget)
+    return row
+
+
+def _separator() -> QFrame:
+    line = QFrame(frameShape=QFrame.Shape.HLine)
+    line.setStyleSheet("color: #2e3238;")
+    return line
 
 
 def launcher_hint() -> str:
@@ -112,19 +127,6 @@ class SettingsDialog(QDialog):
         logs = QPushButton("Open log folder", clicked=lambda: QDesktopServices.openUrl(
             QUrl.fromLocalFile(str(paths.app_dir()))))
 
-        form = QFormLayout()
-        form.setVerticalSpacing(10)
-        form.addRow("QRes.exe", _browse_row(self.qres, browse))
-        form.addRow("Desktop resolution", self.desktop)
-        form.addRow("", _hint("Your primary display's normal resolution: what \"Restore desktop resolution\" "
-                              "switches back to if nothing else is recorded. QRes only ever changes the "
-                              "primary display."))
-        form.addRow("New games default to", self.default_size)
-        form.addRow("", self.temporary)
-        form.addRow("", _hint("Keeps a crash or power cut from leaving Windows at the game's resolution after a reboot."))
-        form.addRow("Wait after switching", self.switch_delay)
-        form.addRow("Wait before switching back", self.restore_delay)
-
         self.tray_icon = QCheckBox("Show a system-tray icon")
         self.tray_icon.setChecked(bool(cfg.get("tray_icon", True)))
         self.background = QCheckBox("Keep running in the tray when the window is closed")
@@ -136,42 +138,69 @@ class SettingsDialog(QDialog):
         hotkey_row = QHBoxLayout()
         hotkey_row.addWidget(self.restore_hotkey, 1)
         hotkey_row.addWidget(QPushButton("Clear", clicked=self.restore_hotkey.clear))
-        form.addRow("Tray icon", _left(self.tray_icon))
-        form.addRow("", _left(self.background))
-        form.addRow("Restore hotkey", hotkey_row)
-        form.addRow("", _hint("A system-wide shortcut (needs a modifier, e.g. Ctrl+Alt+Home) that switches "
-                              "back to your desktop resolution from anywhere. Give presets their own hotkeys "
-                              "when you add them. Global hotkeys and the tray need QRes GUI to be running "
-                              "(turn on \"keep running in the tray\")."))
-
-        form.addRow("Launcher", _browse_row(launcher, logs))
-        form.addRow("", _hint(launcher_hint()))
-        # Hints go on their own rows under their buttons: beside a button, a
-        # wrapped label doesn't get the height it needs and ends up cut off.
-        form.addRow("Notifications", _left(QPushButton("Send test notification", clicked=self._test_notification)))
-        form.addRow("", _hint("Launcher problems show up as Windows notifications. While a fullscreen game "
-                              "has focus, Windows holds them in the notification centre instead."))
-        if on_playnite:
-            form.addRow("Playnite", _left(QPushButton("Playnite integration…", clicked=on_playnite)))
-            form.addRow("", _hint("Switch resolution for games started from Playnite, whatever the store."))
-        if on_remove_hooks:
-            form.addRow("Hooks", _left(QPushButton("Remove all hooks…", clicked=on_remove_hooks)))
-            form.addRow("", _hint("Takes QRes out of every Steam game's launch options and Playnite's scripts, "
-                                  "deletes the game shortcuts and turns switching off. Resolution choices are kept."))
-
         self.check_updates = QCheckBox("Check for updates when QRes GUI starts (at most once a day)")
         self.check_updates.setChecked(bool(cfg.get("check_updates", True)))
         self.on_check_updates = on_check_updates
-        row = QHBoxLayout()
-        row.addWidget(self.check_updates)
+
+        # Six short tabs instead of one long form (#11): everyday settings first,
+        # rare and risky actions away from them.
+        self.tabs = QTabWidget(objectName="settingsTabs")
+
+        form = self._page("General")
+        form.addRow("QRes.exe", _browse_row(self.qres, browse))
+        form.addRow("Desktop resolution", self.desktop)
+        form.addRow("", _hint("What \"Restore desktop resolution\" goes back to when nothing else is "
+                              "recorded. QRes only ever changes the primary display."))
+        form.addRow("New games default to", self.default_size)
+
+        form = self._page("Switching")
+        form.addRow("", self.temporary)
+        form.addRow("", _hint("So a crash or power cut can't leave Windows at a game's resolution after a "
+                              "reboot."))
+        form.addRow("Wait after switching", self.switch_delay)
+        form.addRow("Wait before switching back", self.restore_delay)
+        form.addRow("", _hint("Raise the first if a game starts before the display has settled, the second "
+                              "if a game restarts itself right after you quit."))
+
+        form = self._page("Tray && hotkeys")
+        form.addRow("Tray icon", _left(self.tray_icon))
+        form.addRow("", _left(self.background))
+        form.addRow("Restore hotkey", hotkey_row)
+        form.addRow("", _hint("Switches back to your desktop resolution from anywhere, even in a game, while "
+                              "QRes GUI is running. Needs a modifier, e.g. Ctrl+Alt+Home. Presets get their "
+                              "own hotkeys in Manage presets."))
+
+        form = self._page("Integrations")
+        # Hints go on their own rows under their buttons: beside a button, a
+        # wrapped label doesn't get the height it needs and ends up cut off.
+        if on_playnite:
+            form.addRow("Playnite", _left(QPushButton("Playnite integration…", clicked=on_playnite)))
+            form.addRow("", _hint("Switch resolution for games started from Playnite, whatever the store."))
+        form.addRow("Launcher", _browse_row(launcher, logs))
+        form.addRow("", _hint(launcher_hint()))
+        form.addRow("Notifications", _left(QPushButton("Send test notification", clicked=self._test_notification)))
+        form.addRow("", _hint("Launcher problems show up as Windows notifications; during a fullscreen game "
+                              "Windows keeps them in the notification centre."))
+        if on_remove_hooks:
+            # The one thing in Settings that undoes work, kept apart at the bottom.
+            form.addRow(_separator())
+            form.addRow(QLabel("Undo everything", objectName="caption"))
+            form.addRow("Hooks", _left(QPushButton("Remove all hooks…", clicked=on_remove_hooks)))
+            form.addRow("", _hint("Takes QRes out of every Steam game's launch options and Playnite's scripts, "
+                                  "deletes its game shortcuts and turns switching off. Resolution choices "
+                                  "are kept."))
+
+        form = self._page("Updates")
+        row = _button_row(self.check_updates)
         if on_check_updates:
             row.addWidget(QPushButton("Check now", clicked=self._check_now))
         row.addStretch()
-        form.addRow("Updates", row)
+        form.addRow("Check", row)
         form.addRow("", _hint("Asks GitHub for this project's release list; nothing about your PC or games is "
-                              "sent. New versions are never downloaded or installed for you."))
+                              "sent, and nothing is downloaded or installed for you."))
 
-        row = QHBoxLayout()
+        form = self._page("Help && About")
+        row = _button_row()
         if on_guide:
             # Close Settings first, so its (now stale) fields can't overwrite the guide's choices.
             row.addWidget(QPushButton("Getting started…", clicked=lambda: (self.reject(), on_guide())))
@@ -180,15 +209,13 @@ class SettingsDialog(QDialog):
             row.addWidget(QPushButton("Diagnostics…", clicked=on_diagnostics))
         row.addStretch()
         form.addRow("Help", row)
-
         if on_transfer:
             # Closes Settings first: an import rewrites the very settings this
             # dialog would write back over on OK.
             form.addRow("Profiles", _left(QPushButton("Back up and restore…",
                                                      clicked=lambda: (self.reject(), on_transfer()))))
-
-        row = QHBoxLayout()
-        row.addWidget(QLabel(f"QRes GUI {__version__} · MIT license"))
+        row = _button_row(QLabel(f"QRes GUI {__version__} · MIT license"))
+        row.addSpacing(6)
         row.addWidget(QPushButton("Licenses…", clicked=lambda: QDesktopServices.openUrl(
             QUrl.fromLocalFile(str(licenses_folder())))))
         row.addStretch()
@@ -200,35 +227,42 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
-        # The settings scroll and OK / Cancel stay put: on a 1080p screen, or
-        # with Windows scaling, the whole form is taller than the screen and
-        # the buttons would otherwise end up below it.
-        page = QWidget(objectName="settingsPage")
-        page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(0, 0, 10, 0)   # room for the scroll bar
-        page_layout.addLayout(form)
-        page_layout.addStretch()
-        self.scroll = QScrollArea(objectName="settingsScroll", widgetResizable=True,
-                                  frameShape=QFrame.Shape.NoFrame)
-        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll.setWidget(page)
-
         layout = QVBoxLayout(self)
-        layout.addWidget(self.scroll, 1)
+        layout.addWidget(self.tabs, 1)
         layout.addWidget(buttons)
 
-        # Open exactly as tall as the wrapped hints need at this width - a taller
-        # window spreads the spare height over them as gaps - but never taller
-        # than the screen it opens on.
+        # Open as tall as the tallest tab needs at this width, so no tab opens
+        # scrolled - but never taller than the screen; then the tab scrolls and
+        # OK / Cancel stay put below it.
         width = self.minimumWidth()
         margins = layout.contentsMargins()
-        inner = width - margins.left() - margins.right()
-        content = (page_layout.totalHeightForWidth(inner) if page_layout.hasHeightForWidth()
-                   else page.sizeHint().height())
-        chrome = margins.top() + margins.bottom() + layout.spacing() + buttons.sizeHint().height()
+        inner = width - margins.left() - margins.right() - 40   # the tab frame and page margins
+        content = max(self._page_height(self.tabs.widget(i), inner) for i in range(self.tabs.count()))
+        chrome = (margins.top() + margins.bottom() + layout.spacing() + buttons.sizeHint().height()
+                  + self.tabs.tabBar().sizeHint().height() + 12)
         screen = (parent.screen() if parent is not None else None) or QApplication.primaryScreen()
         room = int(screen.availableGeometry().height() * 0.9) - 40 if screen else content + chrome
         self.resize(width, min(content + chrome, room))
+
+    def _page(self, title: str) -> QFormLayout:
+        """A tab holding a form, which scrolls if the screen is too short for it."""
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(14, 14, 14, 8)
+        form = QFormLayout()
+        form.setVerticalSpacing(10)
+        outer.addLayout(form)
+        outer.addStretch()
+        scroll = QScrollArea(widgetResizable=True, frameShape=QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(page)
+        self.tabs.addTab(scroll, title)
+        return form
+
+    @staticmethod
+    def _page_height(scroll: QScrollArea, width: int) -> int:
+        layout = scroll.widget().layout()
+        return layout.totalHeightForWidth(width) if layout.hasHeightForWidth() else scroll.widget().sizeHint().height()
 
     def _check_now(self) -> None:
         release, error = self.on_check_updates()

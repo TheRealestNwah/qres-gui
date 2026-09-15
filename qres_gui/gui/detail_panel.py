@@ -631,7 +631,7 @@ class DetailPanel(QScrollArea):
                                 "Turn on switching above; it then switches when started from Playnite.")
             else:
                 theme.set_state(self.shortcut_status, "warn",
-                                "Add QRes to Playnite first: Settings › Playnite integration.")
+                                "Add QRes to Playnite first: Settings › Integrations › Playnite integration.")
         elif watch_needed:
             theme.set_state(self.shortcut_status, "warn", "Set the game process below before creating a shortcut.")
         elif found:
