@@ -623,8 +623,12 @@ class DetailPanel(QScrollArea):
             for option in engines.OPTIONS.get(engine, ()):
                 combo = QComboBox()
                 combo.addItem("Game's choice", "")
-                choices = (engines.monitor_choices(len(self.win.displays)) if option.per_display
-                           else option.choices)
+                if option.per_display:
+                    choices = engines.monitor_choices(len(self.win.displays))
+                elif option.per_profile:
+                    choices = ((engines.PROFILE_RESOLUTION, "Start at this game's resolution", ()),)
+                else:
+                    choices = option.choices
                 for value, label, _flags in choices:
                     combo.addItem(label, value)
                 combo.currentIndexChanged.connect(lambda _i, key=option.key: self._on_engine_option(key))
@@ -643,7 +647,13 @@ class DetailPanel(QScrollArea):
             combo.blockSignals(True)
             combo.setCurrentIndex(max(combo.findData(saved.get(key, "")), 0))
             combo.blockSignals(False)
-        adds = engines.command_line(saved)
+        # Say which size "this game's resolution" means right now; it follows the profile.
+        resolution = self.engine_combos.get("resolution")
+        size = engines.profile_size(entry)
+        if resolution is not None:
+            resolution.setItemText(1, "Start at this game's resolution" +
+                                   (f" ({size[0]} × {size[1]})" if size else ""))
+        adds = engines.command_line(saved, entry)
         self.engine_adds.setText(
             (f"Adds: {adds}. " if adds else "") +
             f"Documented by {name} for every game made with it, though a game can choose to ignore them. "
