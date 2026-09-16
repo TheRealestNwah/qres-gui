@@ -4,7 +4,12 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
-## Unreleased
+## 1.7.0 — 2026-09-16
+
+Commands around the switch, and engine games told their resolution. Both are
+covered by tests — the commands run for real through cmd.exe in them — but
+haven't been tried on real hardware yet. A game with no commands and no engine
+options launches exactly as in 1.6.0.
 
 ### Added
 - **Commands before and after the switch**, for every game (Settings ›
