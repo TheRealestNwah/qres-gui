@@ -46,6 +46,9 @@ DEFAULTS: dict = {
     # games hidden from the list (ids). Only a list filter: a hidden game keeps
     # its profile and still switches when launched.
     "hidden_games": [],
+    # command lines run just before every game's switch and after it's undone
+    # (see commands.py); games can add their own in their profile's "commands"
+    "commands": {"before": "", "after": ""},
     "games": {},
 }
 

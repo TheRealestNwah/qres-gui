@@ -181,6 +181,27 @@ ones each engine documents for every game made with it
 [Unreal](https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-command-line-arguments-reference)),
 but a game can still choose to ignore them. Anything you type goes after them.
 
+### Commands before and after the switch
+
+A game's **Commands** box runs something just before QRes switches the display
+for it, and something else after it switches back: close an app that doesn't
+like resolution changes, start a frame limiter, turn an overlay off and on
+again. **Settings › Switching** has the same two for every game; those run
+first before the switch and last after it, so each undoes in the order it set
+up.
+
+Commands are typed as in a Command Prompt. QRes waits up to 15 seconds for
+each and then carries on, so anything that keeps running (a limiter, an
+overlay) is left to run, and a failing command never stops a game from
+starting. The "after" commands run however the switch ends: the game exiting,
+Steam's *Stop*, Playnite's stop script, or **Restore desktop resolution**.
+They're given `QRES_EVENT` (`before` / `after`), `QRES_GAME` and
+`QRES_GAME_ID`, so a command for every game can tell them apart.
+
+Commands only run when a switch actually happens. Backups carry them, and
+importing a file that adds commands lists every one of them, word for word,
+before anything is applied — only import a profile file you trust.
+
 ### Quick resolution switching
 
 The **Quick switch** strip under the top bar changes your primary display's

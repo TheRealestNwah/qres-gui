@@ -224,6 +224,22 @@ class DetailPanel(QScrollArea):
         layout.addWidget(self.watch_hint)
         v.addWidget(box)
 
+        # Commands around the switch (commands.py)
+        box = QGroupBox("Commands")
+        form = QFormLayout(box)
+        self.before_cmd = QLineEdit(placeholderText="Optional, e.g. taskkill /im Discord.exe")
+        self.after_cmd = QLineEdit(placeholderText=r'Optional, e.g. start "" "C:\Tools\Overlay.exe"')
+        for field, when in ((self.before_cmd, "before"), (self.after_cmd, "after")):
+            field.editingFinished.connect(lambda when=when: self._on_command(when))
+        form.addRow("Before switching", self.before_cmd)
+        form.addRow("After switching back", self.after_cmd)
+        form.addRow(_muted(
+            "Run as in a Command Prompt, just before QRes switches the display for this game and after it "
+            "switches back — including when the game is closed from Steam or Playnite. QRes waits up to "
+            "15 seconds for each, and anything it starts keeps running. Commands for every game are in "
+            "Settings › Switching: those run first before, and last after."))
+        v.addWidget(box)
+
         self.remove_btn = QPushButton("Remove from list", clicked=lambda: self.win.remove_manual_game(self.game))
         v.addLayout(_row(self.remove_btn))
 
@@ -261,6 +277,9 @@ class DetailPanel(QScrollArea):
         self._fill_hdr(entry.get("hdr"))
         self.watch.setText(", ".join(entry.get("watch", [])))
         self.extra_args.setText(entry.get("extra_args", ""))
+        saved = entry.get("commands") or {}
+        self.before_cmd.setText(saved.get("before", ""))
+        self.after_cmd.setText(saved.get("after", ""))
 
         is_steam, is_manual = game.store == "steam", game.store == "manual"
         self.steam_box.setVisible(is_steam)
@@ -454,6 +473,26 @@ class DetailPanel(QScrollArea):
             entry["watch"] = names
             self.watch.setText(", ".join(names))
             self._changed()
+
+    def _on_command(self, when: str) -> None:
+        if self._loading or not self.game:
+            return
+        field = self.before_cmd if when == "before" else self.after_cmd
+        text = field.text().strip()
+        entry = self._entry()
+        saved = dict(entry.get("commands") or {})
+        if text == saved.get(when, ""):
+            return
+        if text:
+            saved[when] = text
+        else:
+            saved.pop(when, None)
+        if saved:
+            entry["commands"] = saved
+        else:
+            entry.pop("commands", None)
+        field.setText(text)
+        self._changed()
 
     def _pick_watch_exe(self) -> None:
         start = self.game.install_dir or ""

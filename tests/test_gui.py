@@ -318,6 +318,26 @@ def test_no_engine_options_for_a_game_whose_engine_isnt_known(win):
     assert win.detail.engine_note.isHidden() and not win.detail.engine_combos
 
 
+def test_a_games_commands_are_saved_and_cleared(win):
+    select(win, "steam:10")
+    win.detail.before_cmd.setText("  taskkill /im Discord.exe  ")
+    win.detail.before_cmd.editingFinished.emit()
+    win._save_now()
+    assert config.load()["games"]["steam:10"]["commands"] == {"before": "taskkill /im Discord.exe"}
+    win.detail.before_cmd.setText("")
+    win.detail.before_cmd.editingFinished.emit()
+    win._save_now()
+    assert "commands" not in config.load()["games"]["steam:10"]
+
+
+def test_commands_for_every_game_live_on_the_switching_tab(win):
+    dialog = SettingsDialog(win, win.cfg, win.modes)
+    assert _tab_of(dialog, dialog.before_cmd) == "Switching"
+    dialog.after_cmd.setText(" echo done ")
+    dialog.apply_to(win.cfg)
+    assert win.cfg["commands"] == {"before": "", "after": "echo done"}
+
+
 def test_extra_arguments_say_where_to_set_them_when_qres_cant(win):
     select(win, "playnite:abc")  # Playnite starts it, so QRes never builds the command line
     assert win.detail.extra_args.isHidden() and not win.detail.args_box.isHidden()
