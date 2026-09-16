@@ -72,3 +72,24 @@ def test_engine_options_go_before_the_users_own_arguments():
              "launch": {"type": "exe", "path": "game.exe", "args": "-store"}}
     assert config.extra_args(entry) == "-dx12 -dx11"
     assert config.full_args(entry) == "-store -dx12 -dx11"
+
+
+@pytest.mark.parametrize("engine, expected", [
+    ("unity", ["-screen-width", "2560", "-screen-height", "1440"]),
+    ("unreal", ["-ResX=2560", "-ResY=1440"]),
+])
+def test_start_at_the_games_resolution_reads_the_profile(engine, expected):
+    entry = {"width": 2560, "height": 1440}
+    assert engines.flags({"engine": engine, "resolution": "profile"}, entry) == expected
+
+
+@pytest.mark.parametrize("entry", [None, {}, {"width": 0, "height": 1440}, {"width": "wide", "height": 1440}])
+def test_no_size_in_the_profile_adds_no_resolution(entry):
+    assert engines.flags({"engine": "unity", "resolution": "profile"}, entry) == []
+
+
+def test_the_resolution_travels_with_the_rest_of_the_arguments():
+    entry = {"width": 1920, "height": 1080, "extra_args": "-typed",
+             "engine_args": {"engine": "unity", "window": "borderless", "resolution": "profile"}}
+    assert config.extra_args(entry) == ("-screen-fullscreen 1 -window-mode borderless "
+                                        "-screen-width 1920 -screen-height 1080 -typed")

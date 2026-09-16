@@ -33,6 +33,12 @@ class Option:
     label: str
     choices: tuple[tuple[str, str, tuple[str, ...]], ...]   # (value, label, flags)
     per_display: bool = False                  # choices are made from the connected displays
+    per_profile: bool = False                  # the one choice takes its values from the game's profile
+
+
+# The single choice of a per_profile option: the game's own resolution, whatever
+# the profile says it is at launch, so changing the profile needs nothing else.
+PROFILE_RESOLUTION = "profile"
 
 
 OPTIONS: dict[str, tuple[Option, ...]] = {
@@ -50,6 +56,9 @@ OPTIONS: dict[str, tuple[Option, ...]] = {
         # Unity numbers monitors itself (1-based); values are filled in from the
         # displays connected, see monitor_choices().
         Option("monitor", "Monitor", (), per_display=True),
+        # Tells the game the size to render at, so a borderless game fills the
+        # switched desktop instead of remembering an older size.
+        Option("resolution", "Resolution", (), per_profile=True),
     ),
     UNREAL: (
         Option("window", "Window mode", (
@@ -61,7 +70,14 @@ OPTIONS: dict[str, tuple[Option, ...]] = {
             ("d3d12", "Direct3D 12", ("-dx12",)),
             ("vulkan", "Vulkan", ("-vulkan",)),
         )),
+        Option("resolution", "Resolution", (), per_profile=True),
     ),
+}
+
+# How each engine spells "render at this size".
+_RESOLUTION_FLAGS = {
+    UNITY: lambda w, h: ["-screen-width", str(w), "-screen-height", str(h)],
+    UNREAL: lambda w, h: [f"-ResX={w}", f"-ResY={h}"],
 }
 
 
@@ -96,8 +112,20 @@ def monitor_choices(count: int) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
     return tuple((str(n), f"Monitor {n}", ("-monitor", str(n))) for n in range(1, max(count, 1) + 1))
 
 
-def flags(choices: dict | None) -> list[str]:
-    """The flags a profile's "engine_args" stands for; unknown engines, keys and values add nothing."""
+def profile_size(entry: dict | None) -> tuple[int, int] | None:
+    """The width and height a game's profile switches to, if it names them."""
+    try:
+        width, height = int((entry or {}).get("width") or 0), int((entry or {}).get("height") or 0)
+    except (TypeError, ValueError):
+        return None
+    return (width, height) if width > 0 and height > 0 else None
+
+
+def flags(choices: dict | None, entry: dict | None = None) -> list[str]:
+    """The flags a profile's "engine_args" stands for; unknown engines, keys and values add nothing.
+
+    `entry` is the game's profile, which "start at this game's resolution" reads its size from.
+    """
     if not isinstance(choices, dict):
         return []
     engine = choices.get("engine")
@@ -110,12 +138,17 @@ def flags(choices: dict | None) -> list[str]:
             if value.isdigit() and int(value) >= 1:
                 out += ["-monitor", value]
             continue
+        if option.per_profile:
+            size = profile_size(entry)
+            if value == PROFILE_RESOLUTION and size:
+                out += _RESOLUTION_FLAGS[engine](*size)
+            continue
         for choice_value, _label, choice_flags in option.choices:
             if choice_value == value:
                 out += list(choice_flags)
     return out
 
 
-def command_line(choices: dict | None) -> str:
+def command_line(choices: dict | None, entry: dict | None = None) -> str:
     """`flags` as command-line text, ready to go in front of the user's own extra arguments."""
-    return subprocess.list2cmdline(flags(choices))
+    return subprocess.list2cmdline(flags(choices, entry))

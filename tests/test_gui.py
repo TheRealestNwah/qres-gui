@@ -298,7 +298,7 @@ def test_a_unity_game_offers_its_engines_options(win, env):
     _make_unity(env)
     select(win, "steam:10")
     assert win.detail.engine_note.text() == "Unity options" and not win.detail.engine_note.isHidden()
-    assert set(win.detail.engine_combos) == {"window", "api", "monitor"}
+    assert set(win.detail.engine_combos) == {"window", "api", "monitor", "resolution"}
     monitors = win.detail.engine_combos["monitor"]
     assert [monitors.itemText(i) for i in range(monitors.count())] == ["Game's choice", "Monitor 1", "Monitor 2"]
 
@@ -311,6 +311,21 @@ def test_a_unity_game_offers_its_engines_options(win, env):
     window.setCurrentIndex(0)                      # back to "Game's choice"
     win._save_now()
     assert "engine_args" not in config.load()["games"]["steam:10"]
+
+
+def test_a_unity_game_can_start_at_its_profiles_resolution(win, env):
+    """Tells the game its size, and follows the profile when that changes."""
+    _make_unity(env)
+    select(win, "steam:10")
+    win.detail.enabled.setChecked(True)                 # a profile at the default 2560 × 1440
+    resolution = win.detail.engine_combos["resolution"]
+    assert resolution.itemText(1) == "Start at this game's resolution (2560 × 1440)"
+    resolution.setCurrentIndex(1)
+    assert "Adds: -screen-width 2560 -screen-height 1440" in win.detail.engine_adds.text()
+
+    win.detail.res_combo.setCurrentIndex(win.detail.res_combo.findData("1920x1080"))
+    assert win.detail.engine_combos["resolution"].itemText(1).endswith("(1920 × 1080)")
+    assert "-screen-width 1920 -screen-height 1080" in win.detail.engine_adds.text()
 
 
 def test_no_engine_options_for_a_game_whose_engine_isnt_known(win):

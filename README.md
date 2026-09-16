@@ -173,8 +173,11 @@ store command line to add to.
 
 For games made with **Unity** or **Unreal Engine**, the box also offers that
 engine's own options as choices — window mode (borderless, exclusive
-fullscreen, windowed), graphics API (Direct3D 11 / 12, Vulkan) and, for Unity,
-which monitor — and shows exactly what they add. QRes GUI tells the engine from
+fullscreen, windowed), graphics API (Direct3D 11 / 12, Vulkan), for Unity
+which monitor, and **Start at this game's resolution**, which tells the game the
+size its profile switches to (`-screen-width`/`-screen-height` for Unity,
+`-ResX`/`-ResY` for Unreal) so a borderless game fills the switched desktop
+instead of remembering an older size — and shows exactly what they add. QRes GUI tells the engine from
 files in the game's folder; nothing is looked up online. The options are the
 ones each engine documents for every game made with it
 ([Unity](https://docs.unity3d.com/Manual/PlayerCommandLineArguments.html),

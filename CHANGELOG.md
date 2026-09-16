@@ -17,6 +17,12 @@ it has been proven on real hardware.
   Commands get `QRES_EVENT`, `QRES_GAME` and `QRES_GAME_ID`. Backups carry
   them, and an import that would add commands lists each one word for word
   before anything is applied.
+- **Engine games can start at their profile's resolution.** Unity and Unreal
+  games get a *Start at this game's resolution* choice among their engine
+  options, which passes the size the profile switches to
+  (`-screen-width`/`-screen-height`, `-ResX`/`-ResY`) so a borderless game fills
+  the switched desktop instead of an older remembered size. It follows the
+  profile: change the resolution and the flags change with it.
 
 ## 1.6.0 — 2026-09-15
 

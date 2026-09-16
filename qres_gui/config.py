@@ -73,7 +73,7 @@ def extra_args(entry: dict) -> str:
 
     The user's text comes last so it can override an engine option if they want.
     """
-    parts = (engines.command_line(entry.get("engine_args")), entry.get("extra_args") or "")
+    parts = (engines.command_line(entry.get("engine_args"), entry), entry.get("extra_args") or "")
     return " ".join(part.strip() for part in parts if part.strip())
 
 
