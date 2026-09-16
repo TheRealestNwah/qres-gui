@@ -33,7 +33,7 @@ from logging.handlers import RotatingFileHandler
 
 import psutil
 
-from . import config, display, hdr, notify, paths, playnite, session
+from . import commands, config, display, hdr, notify, paths, playnite, session
 
 log = logging.getLogger("qres.launcher")
 
@@ -178,6 +178,7 @@ class _Switch:
         self.original: display.Mode | None = None   # set only if we changed the resolution
         self.hdr_original: bool | None = None       # set only if HDR is away from its desktop state
         self.token: str | None = None
+        self.after: list[str] = []                  # commands to run once the switch is undone
 
     def apply(self) -> None:
         active = session.read()
@@ -203,6 +204,8 @@ class _Switch:
         # "original" is the real desktop mode rather than whatever is set right
         # now - but only for the screen it was recorded on. Another display's
         # mode is not this one's, and the session file holds a single record.
+        # Commands a replaced or undone record was still due to run afterwards.
+        stale_after = list((active or {}).get("after") or [])
         stale_device = (active.get("device") or None) if active else None
         inherit = active is not None and stale_device == self.device
         if active is not None and not inherit:
@@ -233,6 +236,8 @@ class _Switch:
                     display.set_mode(original, self.qres, self.temporary, self.device)
                 _switch_hdr(carried, self.game_id, starting=False, device=self.device)
                 session.clear()
+                commands.run_all(stale_after, commands.AFTER, active.get("game_id") or "",
+                                 _game_name(active.get("game_id") or ""))
             # A record for another screen is left alone: we cannot restore it
             # from here, and the GUI offers to on its next start.
             return
@@ -244,6 +249,13 @@ class _Switch:
             extra["device"] = self.device  # so the guard puts back the screen we changed
         if change_hdr or carried is not None:
             extra["original_hdr"] = self.hdr_original = desktop_hdr
+        # Saved with the record so whatever ends this switch - us, the guard,
+        # Playnite's stop script, the Restore button - runs them, once.
+        self.after = commands.planned(self.cfg, self.entry, commands.AFTER) + stale_after
+        if self.after:
+            extra["after"] = self.after
+        commands.run_all(commands.planned(self.cfg, self.entry, commands.BEFORE),
+                         commands.BEFORE, self.game_id, self.name)
         self.token = session.write(original.to_dict(), self.game_id, owner=self.owner, **extra)
         self.original = original if target != original else None
         guard_starting = _spawn_guard(self.owner, self.token)  # in the background, while we switch
@@ -278,6 +290,7 @@ class _Switch:
                 return  # keep the session record so the GUI can offer to restore
         _switch_hdr(self.hdr_original, self.game_id, starting=False, device=self.device)
         session.clear(token=self.token)
+        commands.run_all(self.after, commands.AFTER, self.game_id, self.name)
 
 
 # --- tying the game to the launcher ----------------------------------------
@@ -679,6 +692,7 @@ def guard(pid: int, token: str | None = None) -> int:
         log.info("owner %d is gone; the display is already back at %s", pid, mode)
         _switch_hdr(data.get("original_hdr"), game_id, starting=False, device=device)
         session.clear(token=data.get("token"))
+        commands.run_all(data.get("after"), commands.AFTER, game_id, name)
         return 0
     log.warning("owner %d ended without switching back; restoring", pid)
     try:
@@ -706,9 +720,10 @@ def restore() -> int:
     how = display.set_mode(mode, display.find_qres(cfg.get("qres_path")),
                            bool(cfg.get("temporary", True)), device)
     log.info("restored %s on %s (%s)", mode, device or "the primary display", how)
-    _switch_hdr((data or {}).get("original_hdr"), (data or {}).get("game_id") or "",
-                starting=False, device=device)
+    game_id = (data or {}).get("game_id") or ""
+    _switch_hdr((data or {}).get("original_hdr"), game_id, starting=False, device=device)
     session.clear()
+    commands.run_all((data or {}).get("after"), commands.AFTER, game_id, _game_name(game_id))
     return 0
 
 
@@ -765,6 +780,8 @@ def playnite_stop(payload: str) -> int:
     log.info("restored %s after Playnite stopped %s (%s)", mode, data.get("game_id"), how)
     _switch_hdr(data.get("original_hdr"), data.get("game_id") or "", starting=False, device=device)
     session.clear(token=data.get("token"))
+    commands.run_all(data.get("after"), commands.AFTER, data.get("game_id") or "",
+                     _game_name(data.get("game_id") or ""))
     return 0
 
 

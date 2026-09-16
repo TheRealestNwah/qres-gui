@@ -42,12 +42,13 @@ PORTABLE_SETTINGS = (
     "temporary", "switch_delay", "restore_delay", "default_target",
     "check_updates", "tray_icon", "background", "restore_hotkey",
     "hidden_games",   # store ids, so they mean the same games on any PC
+    "commands",       # listed verbatim in the import preview; see Summary.commands
 )
 
 # A game profile's portable half. "launch" rides along for manual games only,
 # which own it - a store game's copy is rewritten by the next rescan.
 PORTABLE_GAME = ("name", "store", "enabled", "width", "height", "refresh", "hdr",
-                 "watch", "extra_args", "quick_restore", "engine_args")
+                 "watch", "extra_args", "quick_restore", "engine_args", "commands")
 PORTABLE_PRESET = ("name", "width", "height", "refresh", "hotkey")
 
 # The fields the first exports carried, before they said which ones they carry.
@@ -73,6 +74,10 @@ class Summary:
     displays_dropped: list[str] = field(default_factory=list)   # profile names
     manual_games: list[str] = field(default_factory=list)       # names whose paths need checking
     hotkeys_dropped: list[str] = field(default_factory=list)    # presets whose shortcut was taken
+    # Commands the file would add or change, as "Game (before): command". A
+    # profile file can come from anyone, and these run on this PC when a game
+    # switches, so the preview shows every one of them, word for word.
+    commands: list[str] = field(default_factory=list)
     # Only a restore removes anything.
     games_removed: list[str] = field(default_factory=list)      # profiles set up since the backup
     manual_removed: list[str] = field(default_factory=list)     # hand-added games since the backup
@@ -97,6 +102,10 @@ class Summary:
             # leading with that would read as work to approve.
             return ["Nothing to change — this file matches what's already here."]
         out = []
+        if self.commands:
+            out.append(f"This file sets {len(self.commands)} command(s) that will run on this PC when games "
+                       "switch. Only apply it if you trust where it came from:\n    "
+                       + "\n    ".join(self.commands))
         if self.games_added or self.games_updated:
             out.append(f"{self.games_added} game profile(s) added, {self.games_updated} updated.")
         if self.games_removed:
@@ -243,6 +252,9 @@ def _clean_game(saved: dict) -> dict | None:
         entry.pop("watch")
     if not isinstance(entry.get("engine_args", {}), dict):
         entry.pop("engine_args")
+    commands = entry.get("commands", {})
+    if not isinstance(commands, dict) or not all(isinstance(v, str) for v in commands.values()):
+        entry.pop("commands")
     if saved.get("store") == "manual" and isinstance(saved.get("launch"), dict):
         entry["launch"] = saved["launch"]
     return entry
@@ -271,6 +283,7 @@ def merge(cfg: dict, data: dict, *, games: bool = True, presets: bool = True,
             label = entry.get("name") or game_id
             entry["display"] = _resolve_display(saved.get("display"), summary, label)
             existing = cfg["games"].get(game_id)
+            _note_commands(summary, label, (existing or {}).get("commands"), entry.get("commands"))
             if existing:
                 keep = {key: existing[key] for key in ("launch", "install_dir") if key in existing}
                 if existing.get("store") == "manual" and "launch" in entry:
@@ -346,15 +359,31 @@ def restore(cfg: dict, data: dict, *, games: bool = True, presets: bool = True,
 # What a profile means when it doesn't mention these: an older profile has no
 # key where a restored one has the empty value, and that's the same choice.
 _PROFILE_DEFAULTS = {"display": "", "hdr": None, "extra_args": "", "quick_restore": False, "watch": [],
-                     "engine_args": {}}
+                     "engine_args": {}, "commands": {}}
 
 
 def _same_profile(a: dict, b: dict) -> bool:
     return {**_PROFILE_DEFAULTS, **a} == {**_PROFILE_DEFAULTS, **b}
 
 
+def _note_commands(summary: Summary, label: str, old, new) -> None:
+    """Add any command `new` sets that `old` didn't have, word for word, to the preview."""
+    old = old if isinstance(old, dict) else {}
+    new = new if isinstance(new, dict) else {}
+    for when in ("before", "after"):
+        command = new.get(when)
+        command = command.strip() if isinstance(command, str) else ""
+        if command and command != (old.get(when) or "").strip():
+            summary.commands.append(f"{label} ({when}): {command}")
+
+
 def _apply_settings(cfg: dict, data: dict, summary: Summary) -> None:
     for key, value in (data.get("settings") or {}).items():
+        if key == "commands" and not (isinstance(value, dict)
+                                      and all(isinstance(v, str) for v in value.values())):
+            continue
+        if key == "commands":
+            _note_commands(summary, "Every game", cfg.get(key), value)
         if key in PORTABLE_SETTINGS and cfg.get(key) != value:
             cfg[key] = value
             summary.settings_applied += 1
@@ -385,6 +414,8 @@ def _restore_games(cfg: dict, data: dict, summary: Summary) -> None:
         label = entry.get("name") or game_id
         entry["display"] = _resolve_display((data["games"][game_id] or {}).get("display"), summary, label)
         existing = games.get(game_id)
+        _note_commands(summary, label, existing.get("commands") if isinstance(existing, dict) else None,
+                       entry.get("commands"))
         if not isinstance(existing, dict):
             games[game_id] = entry
             if entry.get("store") == "manual":

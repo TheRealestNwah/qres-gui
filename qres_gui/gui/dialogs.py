@@ -123,6 +123,10 @@ class SettingsDialog(QDialog):
         self.restore_delay = QDoubleSpinBox(suffix=" s", decimals=1, minimum=0, maximum=15, singleStep=0.5)
         self.restore_delay.setValue(float(cfg.get("restore_delay", 1.0)))
 
+        saved = cfg.get("commands") or {}
+        self.before_cmd = QLineEdit(saved.get("before", ""), placeholderText="Optional")
+        self.after_cmd = QLineEdit(saved.get("after", ""), placeholderText="Optional")
+
         launcher = QLineEdit(subprocess.list2cmdline(paths.hook_command()), readOnly=True)
         logs = QPushButton("Open log folder", clicked=lambda: QDesktopServices.openUrl(
             QUrl.fromLocalFile(str(paths.app_dir()))))
@@ -161,6 +165,10 @@ class SettingsDialog(QDialog):
         form.addRow("Wait before switching back", self.restore_delay)
         form.addRow("", _hint("Raise the first if a game starts before the display has settled, the second "
                               "if a game restarts itself right after you quit."))
+        form.addRow("Before every switch", self.before_cmd)
+        form.addRow("After every switch", self.after_cmd)
+        form.addRow("", _hint("Commands run as in a Command Prompt for every game, before its own commands "
+                              "and after them. QRES_GAME and QRES_GAME_ID say which game it is."))
 
         form = self._page("Tray && hotkeys")
         form.addRow("Tray icon", _left(self.tray_icon))
@@ -307,6 +315,7 @@ class SettingsDialog(QDialog):
         cfg["tray_icon"] = self.tray_icon.isChecked()
         cfg["background"] = self.background.isChecked()
         cfg["restore_hotkey"] = self.restore_hotkey.keySequence().toString()
+        cfg["commands"] = {"before": self.before_cmd.text().strip(), "after": self.after_cmd.text().strip()}
 
 
 class PlayniteDialog(QDialog):

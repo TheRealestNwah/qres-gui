@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import (__version__, config, display, hdr, hooks, notify, paths, playnite, session, shortcuts,
-                updates)
+from .. import (__version__, commands, config, display, hdr, hooks, notify, paths, playnite, session,
+                shortcuts, updates)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
@@ -1041,8 +1041,18 @@ class MainWindow(QMainWindow):
                 QApplication.restoreOverrideCursor()
         if active and not session.owner_alive(active):
             session.clear()
+            self._run_after_commands(active)
         self.statusBar().showMessage(f"Switched to {mode} ({how}).{hdr_note}", 8000)
         self._poll_state()
+
+    def _run_after_commands(self, record: dict) -> None:
+        """Run a finished switch's "after" commands without holding up the window."""
+        after = record.get("after") or []
+        if after:
+            game_id = record.get("game_id") or ""
+            name = (self.cfg["games"].get(game_id) or {}).get("name") or game_id
+            threading.Thread(target=commands.run_all, args=(after, commands.AFTER, game_id, name),
+                             daemon=True).start()
 
     def _ensure_qres(self) -> None:
         if display.find_qres(self.cfg.get("qres_path")):
@@ -1074,6 +1084,7 @@ class MainWindow(QMainWindow):
             current = None  # unplugged since; offer the restore rather than drop the record
         if current == original:
             session.clear()
+            self._run_after_commands(active)   # the display came back; what was due after it still is
             return
         where = f" on Display {display.device_number(device)}" if device else ""
         answer = QMessageBox.question(

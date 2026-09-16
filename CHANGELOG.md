@@ -4,6 +4,20 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
+## Unreleased
+
+### Added
+- **Commands before and after the switch**, for every game (Settings ›
+  Switching) and per game (the game's new Commands box). "Before" runs just
+  before QRes switches the display, "after" once it's switched back — however
+  that happens: the game exiting, Steam's Stop, Playnite's stop script or
+  Restore desktop resolution. Every-game commands wrap around a game's own.
+  QRes waits up to 15 seconds for each, then carries on, and anything a command
+  starts keeps running; a failing command never stops a game from starting.
+  Commands get `QRES_EVENT`, `QRES_GAME` and `QRES_GAME_ID`. Backups carry
+  them, and an import that would add commands lists each one word for word
+  before anything is applied.
+
 ## 1.6.0 — 2026-09-15
 
 The six issues found while testing 1.3–1.5. Everything below is covered by

@@ -238,6 +238,18 @@ A setting a backup doesn't know about is left as it is: a backup made before
 **Switch back the moment the game closes** was saved in backups can't say
 whether it was on, so restoring it doesn't turn it off.
 
+## A before or after command didn't run
+
+- Commands only run when QRes actually switches: a game already at its
+  profile's resolution (and HDR) starts without them.
+- `launcher.log` has a line for every command, `running the before command …`,
+  then `finished (exit code …)` or `still running after 15 s`. A non-zero exit
+  code usually means the command itself failed; try it in a Command Prompt.
+- Commands run without a console window. Something that needs one, or asks a
+  question, will wait silently; start it with `start "" …` instead.
+- Started from Playnite, a Steam game's commands run once, from Playnite's
+  scripts, not again from Steam's launch options.
+
 ## Removing QRes GUI
 
 **Settings › Integrations › Remove all hooks…** takes QRes out of Steam's launch options and
