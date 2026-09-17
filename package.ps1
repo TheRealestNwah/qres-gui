@@ -1,7 +1,10 @@
 # Builds the release zip: release\QResGUI-<version>-win64.zip, containing the
 # app plus install.cmd / install.ps1 / uninstall.ps1 so it can be installed
 # without Python. -Python is passed on to build.ps1.
-param([switch]$SkipBuild, [string]$Python)
+#
+# -Installer also builds release\QResGUI-<version>-setup.exe from the same files
+# with Inno Setup (installer\QResGUI.iss), which winget installs.
+param([switch]$SkipBuild, [string]$Python, [switch]$Installer)
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 
@@ -27,4 +30,16 @@ Set-Content (Join-Path $stage "VERSION") $version -NoNewline
 if (Test-Path $zip) { Remove-Item $zip }
 Compress-Archive -Path $stage -DestinationPath $zip
 Write-Host "Packaged $zip ($([int]((Get-Item $zip).Length / 1MB)) MB)"
+
+if ($Installer) {
+    $iscc = @((Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source,
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe", "$env:ProgramFiles\Inno Setup 7\ISCC.exe",
+              "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") |
+        Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    if (-not $iscc) { throw "Inno Setup (ISCC.exe) isn't installed; it's needed for -Installer." }
+    & $iscc /Q "/DAppVersion=$version" "/DStage=$stage" (Join-Path $root "installer\QResGUI.iss")
+    if ($LASTEXITCODE) { throw "Building the installer failed (ISCC exit code $LASTEXITCODE)." }
+    Write-Host "Packaged $(Join-Path $out "QResGUI-$version-setup.exe")"
+}
 exit 0

@@ -50,14 +50,47 @@ jobs:
       - name: Test
         run: python -m pytest -q
 
-      - name: Build release zip
+      - name: Install Inno Setup
         shell: pwsh
-        run: ./package.ps1 -Python python
+        run: |
+          $found = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 7\ISCC.exe",
+                     "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe") | Where-Object { Test-Path $_ }
+          if (-not $found) { choco install innosetup --no-progress -y }
+
+      - name: Build release zip and installer
+        shell: pwsh
+        run: ./package.ps1 -Python python -Installer
+
+      # The installer on a clean machine: installs silently, registers in
+      # Settings > Apps the way winget expects, and says "in use" (exit 2)
+      # rather than failing blindly while QRes GUI runs.
+      - name: Try the installer
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem release/*-setup.exe).FullName
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "setup exited with $($p.ExitCode)" }
+          $dest = Join-Path $env:LOCALAPPDATA "Programs\QResGUI"
+          if (-not (Test-Path "$dest\QResGUI.exe")) { throw "QResGUI.exe wasn't installed" }
+          $entry = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\QResGUI"
+          $version = (Select-String -Path qres_gui/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          if ($entry.DisplayVersion -ne $version -or $entry.Publisher -ne "TheRealestNwah") {
+            throw "Settings > Apps entry is wrong: $($entry.DisplayVersion) / $($entry.Publisher)"
+          }
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $gui = Start-Process "$dest\QResGUI.exe" -PassThru
+          Start-Sleep 8
+          $again = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -Wait -PassThru
+          Stop-Process -Id $gui.Id -Force -ErrorAction SilentlyContinue
+          if ($again.ExitCode -ne 2) { throw "setup while QRes GUI runs exited with $($again.ExitCode), not 2" }
+          Write-Host "Installer OK: $version installed, and exit code 2 while running"
 
       - uses: actions/upload-artifact@v7
         with:
           name: QResGUI-win64
-          path: release/*.zip
+          path: |
+            release/*.zip
+            release/*-setup.exe
           if-no-files-found: error
 
   release:
@@ -93,6 +126,7 @@ jobs:
           $version = $env:TAG.TrimStart("v")
           ./tools/release-notes.ps1 -Version $version | Set-Content notes.md -Encoding utf8
           $zip = (Get-ChildItem release/*.zip).FullName
+          $setup = (Get-ChildItem release/*-setup.exe).FullName
           # A pre-release if the source marks this version unfinished, or it's
           # a 0.x version; otherwise a full ("latest") release.
           $flag = Select-String -Path qres_gui/__init__.py -Pattern '__prerelease__ = (\w+)' | Select-Object -First 1
@@ -106,4 +140,4 @@ jobs:
           $where = @(if ("${{ github.event_name }}" -eq "workflow_dispatch") {
               "--target", "$(git rev-parse HEAD)"
           } else { "--verify-tag" })
-          gh release create $env:TAG $zip $kind @where --title "QRes GUI $version" --notes-file notes.md
+          gh release create $env:TAG $zip $setup $kind @where --title "QRes GUI $version" --notes-file notes.md
