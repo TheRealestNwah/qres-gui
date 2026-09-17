@@ -47,7 +47,7 @@ PORTABLE_SETTINGS = (
 
 # A game profile's portable half. "launch" rides along for manual games only,
 # which own it - a store game's copy is rewritten by the next rescan.
-PORTABLE_GAME = ("name", "store", "enabled", "width", "height", "refresh", "hdr",
+PORTABLE_GAME = ("name", "store", "enabled", "width", "height", "refresh", "hdr", "scaling",
                  "watch", "extra_args", "quick_restore", "engine_args", "commands")
 PORTABLE_PRESET = ("name", "width", "height", "refresh", "hotkey")
 
@@ -358,7 +358,7 @@ def restore(cfg: dict, data: dict, *, games: bool = True, presets: bool = True,
 
 # What a profile means when it doesn't mention these: an older profile has no
 # key where a restored one has the empty value, and that's the same choice.
-_PROFILE_DEFAULTS = {"display": "", "hdr": None, "extra_args": "", "quick_restore": False, "watch": [],
+_PROFILE_DEFAULTS = {"display": "", "hdr": None, "scaling": None, "extra_args": "", "quick_restore": False, "watch": [],
                      "engine_args": {}, "commands": {}}
 
 
