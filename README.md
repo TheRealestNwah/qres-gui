@@ -157,6 +157,21 @@ the resolution, so the same safety nets below put it back — the guard,
 Expect the display to go black for a second or two each way: switching HDR makes
 it re-sync.
 
+### Scaling
+
+When a game runs at a size smaller than the display — 2560 × 1440 on an
+ultrawide, say — **Scaling** in the same box decides how it's shown: *Keep
+aspect ratio* (black bars at the sides), *Centered, no scaling* (a smaller
+picture in the middle), or *Stretch to fill*. *Leave as it is*, the default,
+keeps whatever your display or graphics driver does now. It's set just after
+the resolution switches and put back with it, through the same safety nets as
+HDR, and never saved to Windows' display settings. **Test for 10 seconds**
+tries it along with the resolution.
+
+The graphics driver has the last word. NVIDIA follows it only when its control
+panel does the scaling on the GPU (*Adjust desktop size and position › Perform
+scaling on: GPU*); a display doing its own scaling can ignore it.
+
 ### Custom launch arguments
 
 A game's **Extra arguments** box takes `-windowed`, `-skipintro` and the like.

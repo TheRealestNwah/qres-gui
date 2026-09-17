@@ -4,6 +4,20 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
+## Unreleased
+
+### Added
+- **Scaling per game** in the Display box: *Keep aspect ratio*, *Centered, no
+  scaling* or *Stretch to fill* for a game running at a size smaller than the
+  display — on an ultrawide, black bars at the sides instead of a stretched
+  picture. Set right after the resolution switches and put back with it by
+  every path that restores the display (the game exiting, the guard, Playnite's
+  stop script, **Restore desktop resolution**), never saved to Windows' display
+  settings, and tried along with the resolution by **Test for 10 seconds**.
+  Uses the Windows display API, so it needs no QRes support; the graphics
+  driver decides whether to follow it (NVIDIA: scaling on the GPU). Backups
+  carry the choice.
+
 ## 1.8.0 — 2026-09-16
 
 Install updates from inside the app, see what you played last, and a fix for

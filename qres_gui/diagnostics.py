@@ -22,7 +22,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from . import __prerelease__, __version__, display, hdr, notify, paths, playnite, session
+from . import __prerelease__, __version__, display, hdr, notify, paths, playnite, scaling, session
 
 UNKNOWN = "couldn't read"
 
@@ -159,6 +159,8 @@ def _session_rows() -> list[Row]:
     ]
     if active.get("original_hdr") is not None:
         rows.append(Row("Restores HDR to", _yes(bool(active["original_hdr"]))))
+    if active.get("original_scaling") is not None:
+        rows.append(Row("Restores scaling to", scaling.describe(int(active["original_scaling"]))))
     return rows
 
 

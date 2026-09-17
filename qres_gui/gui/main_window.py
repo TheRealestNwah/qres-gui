@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import (__version__, autostart, commands, config, display, hdr, hooks, notify, paths, played, playnite,
-                session, shortcuts, updates, watcher)
+                scaling, session, shortcuts, updates, watcher)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
@@ -815,6 +815,8 @@ class MainWindow(QMainWindow):
             target += f"  ·  Display {display.device_number(entry['display'])}"
         if enabled and entry.get("hdr") is not None:
             target += "  ·  HDR " + ("on" if entry["hdr"] else "off")
+        if enabled and entry.get("scaling") in scaling.CHOICES:
+            target += "  ·  " + dict((key, label) for label, key in scaling.LABELS)[entry["scaling"]]
         item.setText(2, target)
         item.setForeground(2, QBrush(QColor("#e4e6ea" if enabled else theme.MUTED)))
         text, kind = self.hook_status(game, entry)
@@ -1289,6 +1291,7 @@ class MainWindow(QMainWindow):
         # so it has to undo everything a switch did, not just the resolution.
         device = (active or {}).get("device") or None
         want_hdr = (active or {}).get("original_hdr")
+        want_scaling = (active or {}).get("original_scaling")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             how = display.set_mode(mode, display.find_qres(self.cfg.get("qres_path")),
@@ -1299,6 +1302,11 @@ class MainWindow(QMainWindow):
         finally:
             QApplication.restoreOverrideCursor()
         hdr_note = ""
+        if want_scaling is not None:
+            try:
+                scaling.set_mode(int(want_scaling), device)
+            except Exception as exc:  # as with HDR: the resolution is back, which matters most
+                hdr_note = f"  Scaling couldn't be put back: {exc}"
         if want_hdr is not None:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:

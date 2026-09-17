@@ -33,7 +33,7 @@ from logging.handlers import RotatingFileHandler
 
 import psutil
 
-from . import commands, config, display, hdr, notify, paths, played, playnite, session
+from . import commands, config, display, hdr, notify, paths, played, playnite, scaling, session
 
 log = logging.getLogger("qres.launcher")
 
@@ -159,8 +159,22 @@ def _switch_hdr(on: bool | None, game_id: str, *, starting: bool, device: str | 
         notify.notify(f"Couldn't turn HDR {'on' if on else 'off'}", f"{detail} ({exc})", game_id=game_id)
 
 
+def _switch_scaling(value: int | None, game_id: str, *, starting: bool, device: str | None = None) -> None:
+    """Set the display's scaling mode, if asked to (None means leave it alone). Never raises."""
+    if value is None:
+        return
+    try:
+        scaling.set_mode(int(value), device)
+    except Exception as exc:
+        log.warning("couldn't set scaling to %s: %s", scaling.describe(value), exc)
+        if starting:
+            notify.notify("Couldn't change the scaling mode",
+                          f"{_game_name(game_id)} is starting with the display's own scaling. ({exc})",
+                          game_id=game_id)
+
+
 class _Switch:
-    """One resolution switch, and the HDR change that goes with it.
+    """One resolution switch, and the HDR and scaling changes that go with it.
 
     The owner (this launcher, or Playnite) keeps it alive."""
 
@@ -181,6 +195,7 @@ class _Switch:
         self.device = entry.get("display") or None
         self.original: display.Mode | None = None   # set only if we changed the resolution
         self.hdr_original: bool | None = None       # set only if HDR is away from its desktop state
+        self.scaling_original: int | None = None    # set only if a scaling mode was asked for
         self.token: str | None = None
         self.after: list[str] = []                  # commands to run once the switch is undone
 
@@ -238,6 +253,7 @@ class _Switch:
             if inherit:
                 if display.current_mode(self.device) != original:  # a taken-over switch needs undoing
                     display.set_mode(original, self.qres, self.temporary, self.device)
+                _switch_scaling(active.get("original_scaling"), self.game_id, starting=False, device=self.device)
                 _switch_hdr(carried, self.game_id, starting=False, device=self.device)
                 session.clear()
                 commands.run_all(stale_after, commands.AFTER, active.get("game_id") or "",
@@ -253,6 +269,16 @@ class _Switch:
             extra["device"] = self.device  # so the guard puts back the screen we changed
         if change_hdr or carried is not None:
             extra["original_hdr"] = self.hdr_original = desktop_hdr
+        # Scaling only means something at a size other than the display's own.
+        want_scaling = scaling.CHOICES.get(self.entry.get("scaling") or "") if target != original else None
+        carried_scaling = active.get("original_scaling") if inherit else None
+        if want_scaling is not None or carried_scaling is not None:
+            desktop_scaling = scaling.current(self.device) if carried_scaling is None else int(carried_scaling)
+            if desktop_scaling is not None:
+                extra["original_scaling"] = self.scaling_original = desktop_scaling
+            else:
+                log.info("not changing scaling for %s: Windows didn't report the current mode", self.game_id)
+                want_scaling = None
         # Saved with the record so whatever ends this switch - us, the guard,
         # Playnite's stop script, the Restore button - runs them, once.
         self.after = commands.planned(self.cfg, self.entry, commands.AFTER) + stale_after
@@ -272,6 +298,8 @@ class _Switch:
                 how = display.set_mode(target, self.qres, self.temporary, self.device)
                 log.info("switched %s -> %s on %s (%s)", original, target,
                          self.device or "the primary display", how)
+                # After the resolution: changing the mode can bring back the display's own scaling.
+                _switch_scaling(want_scaling, self.game_id, starting=True, device=self.device)
             time.sleep(float(self.cfg.get("switch_delay", 1.0)))
         except display.DisplayError as exc:
             notify.notify(f"Couldn't switch to {target}",
@@ -280,7 +308,7 @@ class _Switch:
             guard_starting.join(30)
 
     def restore(self) -> None:
-        if self.original is None and self.hdr_original is None:
+        if self.original is None and self.hdr_original is None and self.scaling_original is None:
             return
         if not self.entry.get("quick_restore"):
             time.sleep(float(self.cfg.get("restore_delay", 1.0)))
@@ -292,6 +320,7 @@ class _Switch:
                 notify.notify(f"Couldn't switch back to {self.original}",
                               f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=self.game_id)
                 return  # keep the session record so the GUI can offer to restore
+        _switch_scaling(self.scaling_original, self.game_id, starting=False, device=self.device)
         _switch_hdr(self.hdr_original, self.game_id, starting=False, device=self.device)
         session.clear(token=self.token)
         commands.run_all(self.after, commands.AFTER, self.game_id, self.name)
@@ -694,6 +723,7 @@ def guard(pid: int, token: str | None = None) -> int:
         already_back = False
     if already_back:
         log.info("owner %d is gone; the display is already back at %s", pid, mode)
+        _switch_scaling(data.get("original_scaling"), game_id, starting=False, device=device)
         _switch_hdr(data.get("original_hdr"), game_id, starting=False, device=device)
         session.clear(token=data.get("token"))
         commands.run_all(data.get("after"), commands.AFTER, game_id, name)
@@ -725,6 +755,7 @@ def restore() -> int:
                            bool(cfg.get("temporary", True)), device)
     log.info("restored %s on %s (%s)", mode, device or "the primary display", how)
     game_id = (data or {}).get("game_id") or ""
+    _switch_scaling((data or {}).get("original_scaling"), game_id, starting=False, device=device)
     _switch_hdr((data or {}).get("original_hdr"), game_id, starting=False, device=device)
     session.clear()
     commands.run_all((data or {}).get("after"), commands.AFTER, game_id, _game_name(game_id))
@@ -783,6 +814,7 @@ def playnite_stop(payload: str) -> int:
                       f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=data.get("game_id"))
         return 1
     log.info("restored %s after Playnite stopped %s (%s)", mode, data.get("game_id"), how)
+    _switch_scaling(data.get("original_scaling"), data.get("game_id") or "", starting=False, device=device)
     _switch_hdr(data.get("original_hdr"), data.get("game_id") or "", starting=False, device=device)
     session.clear(token=data.get("token"))
     commands.run_all(data.get("after"), commands.AFTER, data.get("game_id") or "",

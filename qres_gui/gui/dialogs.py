@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__, autostart, diagnostics, display, notify, paths, playnite, transfer
+from .. import scaling as scaling_mod
 from . import theme
 
 
@@ -613,13 +614,15 @@ class TestResolutionDialog(QDialog):
     """Switch to a mode for a few seconds, then back, so it can be checked safely."""
 
     def __init__(self, parent, target: display.Mode, qres: str | None, temporary: bool,
-                 seconds: int = 10, device: str | None = None):
+                 seconds: int = 10, device: str | None = None, scaling: int | None = None):
         super().__init__(parent)
         self.setWindowTitle("Testing resolution")
         self.setMinimumWidth(420)
         self.target, self.qres, self.temporary = target, qres, temporary
         self.device = device
         self.original = display.current_mode(device)
+        self.scaling = scaling                        # the game's scaling mode, tried with the resolution
+        self.original_scaling = scaling_mod.current(device) if scaling is not None else None
         self.remaining = seconds
         self.switched = False
 
@@ -647,6 +650,11 @@ class TestResolutionDialog(QDialog):
         finally:
             QApplication.restoreOverrideCursor()
         self.switched = True
+        if self.scaling is not None and self.original_scaling is not None:
+            try:
+                scaling_mod.set_mode(self.scaling, self.device)
+            except scaling_mod.ScalingError as exc:
+                how += f"; scaling not changed: {exc}"
         self.message.setText(f"Now running at {self.target}  (via {how})")
         self._update_countdown()
         self.timer.start()
@@ -667,7 +675,9 @@ class TestResolutionDialog(QDialog):
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
                 display.set_mode(self.original, self.qres, self.temporary, self.device)
-            except display.DisplayError:
+                if self.scaling is not None and self.original_scaling is not None:
+                    scaling_mod.set_mode(self.original_scaling, self.device)
+            except (display.DisplayError, scaling_mod.ScalingError):
                 pass  # the main window's restore button covers this
             finally:
                 QApplication.restoreOverrideCursor()

@@ -551,6 +551,25 @@ def test_problem_banner_shows_and_dismisses(win):
     assert win.event_bar.isHidden() and config.load()["events_seen"] > 0
 
 
+def test_scaling_choice_is_saved_and_shown(win):
+    select(win, "gog:1453375253")
+    win.detail.enabled.setChecked(True)
+    win.detail.scaling_combo.setCurrentIndex(win.detail.scaling_combo.findData("aspect"))
+    assert win.cfg["games"]["gog:1453375253"]["scaling"] == "aspect"
+    assert "Keep aspect ratio" in row(win, "gog:1453375253")[2]
+    win.detail.scaling_combo.setCurrentIndex(0)                     # Leave as it is
+    assert win.cfg["games"]["gog:1453375253"]["scaling"] is None
+
+
+def test_restore_button_puts_scaling_back(win, monkeypatch):
+    calls = []
+    monkeypatch.setattr(main_window.scaling, "set_mode", lambda value, device=None: calls.append((value, device)))
+    session.write(display.Mode(3440, 1440, 165).to_dict(), "steam:10", original_scaling=1)
+    monkeypatch.setattr(session, "owner_alive", lambda data: False)
+    win.restore_desktop()
+    assert calls == [(1, None)]
+
+
 def test_update_banner(win, monkeypatch):
     assert win.update_bar.isHidden()
     monkeypatch.setattr(updates, "check", lambda current=None: {"version": "99.0.0", "url": "https://x/v99", "name": ""})
