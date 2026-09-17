@@ -4,7 +4,17 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
-## Unreleased
+## 1.9.0 — 2026-09-17
+
+Switching for games QRes can't hook, a scaling mode per game, and an installer
+that winget can use. Checked before release: the build starts in the tray with
+game watching on and its launcher runs in a throwaway profile; the watcher
+indexed a real 24-game library in the background and checks for new
+processes in about 7 ms; Windows accepted all three scaling modes on both of
+the test PC's displays in validate-only mode; and CI installed the new setup
+on a clean machine, including refusing while QRes GUI runs. Whether a graphics
+driver follows the scaling choice on screen, and the watcher with a real game,
+are still to be tried on real hardware.
 
 ### Added
 - **Switch for games however they're started** (Settings › Switching). For
