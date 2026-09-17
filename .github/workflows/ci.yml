@@ -80,7 +80,10 @@ jobs:
           $env:QT_QPA_PLATFORM = "offscreen"
           $gui = Start-Process "$dest\QResGUI.exe" -PassThru
           Start-Sleep 8
-          $again = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -Wait -PassThru
+          Write-Host "LOCALAPPDATA=$env:LOCALAPPDATA dest=$dest gui exited=$($gui.HasExited)"
+          Get-Process QResGUI -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "running: $($_.Id) $($_.Path)" }
+          $again = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/LOG=$env:RUNNER_TEMP\setup2.log" -Wait -PassThru
+          Get-Content "$env:RUNNER_TEMP\setup2.log" -Tail 15
           Stop-Process -Id $gui.Id -Force -ErrorAction SilentlyContinue
           if ($again.ExitCode -ne 2) { throw "setup while QRes GUI runs exited with $($again.ExitCode), not 2" }
           Write-Host "Installer OK: $version installed, and exit code 2 while running"
