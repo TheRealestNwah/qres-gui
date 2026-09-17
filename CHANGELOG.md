@@ -16,6 +16,14 @@ it has been proven on real hardware.
   not while a game is running through QRes. If installing fails, QRes GUI
   opens at the version you had and says why (the installer's output is in
   `%APPDATA%\QResGUI\update.log`). Nothing is downloaded until you click it.
+- **Last played** column in the game list: *Today*, *Yesterday*, *3 days ago*
+  or a date, with the exact time on hover. It's when the game was last started
+  through QRes (Steam launch options, Playnite, shortcuts or Play), or by Steam
+  for a Steam game however it was started, whichever is later. Clicking the
+  heading sorts the most recently played first, and the list now remembers
+  which column it was sorted by. Launches are noted in
+  `%APPDATA%\QResGUI\played.json`, which backups leave out as this PC's own
+  history.
 
 ### Fixed
 - **Games that only ship a Unity-made launcher are no longer called Unity

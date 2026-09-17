@@ -9,9 +9,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qres_gui import (__version__, config, display, hdr, notify, paths, playnite, session, shortcuts,
+from qres_gui import (__version__, config, display, hdr, notify, paths, played, playnite, session, shortcuts,
                       transfer, updates)
 from qres_gui.gui import main_window, theme
 from qres_gui.gui.dialogs import (AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog,
@@ -42,11 +43,15 @@ class FakeSteam:
 
     def __init__(self):
         self.options = {"10": "-novid"}
+        self.played = {}
         self.running = False
         self.writes = []
 
     def is_running(self):
         return self.running
+
+    def last_played(self):
+        return dict(self.played)
 
     def launch_options(self):
         return dict(self.options)
@@ -137,6 +142,60 @@ def row(win, game_id):
 
 
 # --- the list ---------------------------------------------------------------------
+
+def names_in_order(win):
+    return [win.tree.topLevelItem(i).text(0) for i in range(win.tree.topLevelItemCount())]
+
+
+def test_last_played_takes_the_later_of_qres_and_steam(win, env):
+    now = time.time()
+    played.record("gog:1453375253", when=now)
+    played.record("steam:10", when=now - 30 * 86400)
+    env["steam"].played = {"10": now - 86400}           # Steam saw it more recently than QRes did
+    win._reload_launch_options()
+    win.rescan()
+    assert win.items["gog:1453375253"].text(main_window.COL_PLAYED) == "Today"
+    assert win.items["steam:10"].text(main_window.COL_PLAYED) == "Yesterday"
+    assert win.items["playnite:abc"].text(main_window.COL_PLAYED) == "—"
+    assert win.items["steam:10"].toolTip(main_window.COL_PLAYED)       # the exact time on hover
+
+
+def test_sorting_by_last_played_puts_the_latest_first_and_is_remembered(win, env):
+    now = time.time()
+    played.record("legendary:Quail", when=now - 5 * 86400)
+    played.record("playnite:abc", when=now)
+    win.rescan()
+    assert names_in_order(win)[0] == "Counter Test"     # A to Z by default
+
+    win.tree.header().setSortIndicator(main_window.COL_PLAYED, Qt.SortOrder.AscendingOrder)   # a header click
+    QApplication.processEvents()
+    assert win.tree.header().sortIndicatorOrder() == Qt.SortOrder.DescendingOrder
+    # Played games newest first, then the never-played ones A to Z.
+    assert names_in_order(win) == ["PUBG", "Hogwarts Legacy", "Counter Test", "Stardew Valley"]
+    win._save_now()
+    assert config.load()["list_sort"] == {"column": main_window.COL_PLAYED, "descending": True}
+
+    win.tree.header().setSortIndicator(main_window.COL_PLAYED, Qt.SortOrder.AscendingOrder)   # clicked again
+    QApplication.processEvents()
+    assert names_in_order(win)[:2] == ["Counter Test", "Stardew Valley"]   # oldest first when asked
+
+    win.tree.header().setSortIndicator(main_window.COL_PLAYED, Qt.SortOrder.DescendingOrder)
+    win._save_now()
+    again = main_window.MainWindow()
+    try:
+        assert again.tree.sortColumn() == main_window.COL_PLAYED
+        assert names_in_order(again)[0] == "PUBG"
+    finally:
+        again.close()
+
+
+def test_a_launch_shows_up_without_a_rescan(win):
+    assert win.items["gog:1453375253"].text(main_window.COL_PLAYED) == "—"
+    played.record("gog:1453375253")                     # what the launcher does as a game starts
+    win._played_seen = (-1.0, "")                       # the file's mtime can match within a tick in a test
+    win._poll_state()
+    assert win.items["gog:1453375253"].text(main_window.COL_PLAYED) == "Today"
+
 
 def test_lists_detected_games(win):
     assert set(win.items) == {"steam:10", "gog:1453375253", "legendary:Quail", "playnite:abc"}

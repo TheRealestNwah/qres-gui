@@ -9,7 +9,7 @@ import psutil
 import pytest
 
 from helpers import no_guard
-from qres_gui import config, display, hooks, launcher, notify, playnite, session
+from qres_gui import config, display, hooks, launcher, notify, played, playnite, session
 from qres_gui.stores import standalone
 from qres_gui.stores.steam import SteamClient
 
@@ -181,6 +181,7 @@ def test_playnite_start_and_stop(switching):
     assert state["mode"] == display.Mode(2560, 1440, 165)
     data = session.read()
     assert data["source"] == "playnite" and data["playnite_id"] == "p1" and data["pid"] == owner
+    assert "steam:1" in played.load()                 # Last played counts starts from Playnite too
 
     assert launcher.playnite_stop(_payload(id="someone-else")) == 0  # not ours: leave it
     assert session.read() is not None
