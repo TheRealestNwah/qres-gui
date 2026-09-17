@@ -19,5 +19,9 @@ def main() -> int:
     app.setQuitOnLastWindowClosed(False)
     theme.apply(app)
     window = MainWindow()
-    window.show()
+    # Started with Windows: straight to the tray, if there is one to open it from.
+    if "--tray" in sys.argv[1:] and window.tray is not None:
+        window.started_in_tray = True
+    else:
+        window.show()
     return app.exec()

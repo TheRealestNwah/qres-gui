@@ -12,7 +12,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qres_gui import (__version__, config, display, hdr, notify, paths, played, playnite, session, shortcuts,
+from qres_gui import (__version__, autostart, config, display, hdr, notify, paths, played, playnite, session, shortcuts,
                       transfer, updates)
 from qres_gui.gui import main_window, theme
 from qres_gui.gui.dialogs import (AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog,
@@ -98,6 +98,9 @@ def env(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(playnite, "config_path", lambda: None)
     monkeypatch.setattr(playnite, "is_running", lambda: False)
     monkeypatch.setattr(notify, "toast", lambda *a: True)
+    startup = {"on": False}                     # never this PC's real startup entries
+    monkeypatch.setattr(autostart, "enabled", lambda: startup["on"])
+    monkeypatch.setattr(autostart, "set_enabled", lambda on: startup.update(on=on) or True)
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: QMessageBox.StandardButton.Ok)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: pytest.fail(f"unexpected warning: {a[2:]}"))
@@ -1272,6 +1275,66 @@ def test_settings_still_saves_from_every_tab(win):
     dialog.check_updates.setChecked(False)
     dialog.apply_to(win.cfg)
     assert (win.cfg["switch_delay"], win.cfg["background"], win.cfg["check_updates"]) == (3.0, True, False)
+
+
+def test_watching_is_a_setting_and_covers_unhooked_games(win):
+    dialog = SettingsDialog(win, win.cfg, win.modes)
+    assert not dialog.watch_games.isChecked()
+    dialog.watch_games.setChecked(True)
+    dialog.apply_to(win.cfg)
+    assert win.cfg["watch_games"] is True
+    win.apply_watch_setting()
+    assert win.watcher is not None and win._watch_timer.isActive()
+    select(win, "gog:1453375253")
+    win.detail.enabled.setChecked(True)
+    assert row(win, "gog:1453375253")[3] == "When it starts"
+    win.cfg["watch_games"] = False
+    win.apply_watch_setting()
+    assert win.watcher is None and not win._watch_timer.isActive()
+    win.refresh_rows()
+    assert row(win, "gog:1453375253")[3] == "No shortcut yet"
+
+
+def test_a_game_seen_starting_is_handed_to_the_launcher_once(win, env, monkeypatch):
+    started = []
+    monkeypatch.setattr(main_window.subprocess, "Popen", lambda cmd, **k: started.append(cmd))
+    assert win.adopt_game("gog:1453375253", 4321)
+    assert started[0][-3:] == ["adopt", "gog:1453375253", "4321"]
+    assert not win.adopt_game("gog:1453375253", 4322)            # its next process, moments later
+    session.write(display.Mode(3440, 1440, 165).to_dict(), "steam:10")
+    assert not win.adopt_game("legendary:Quail", 99)            # something already switched
+    assert len(started) == 1
+
+
+def test_the_watch_list_follows_the_profiles(win, env):
+    select(win, "gog:1453375253")
+    win.detail.enabled.setChecked(True)
+    [(game_id, folder, watch)] = win.watch_spec()
+    assert game_id == "gog:1453375253" and folder.endswith("Stardew") and watch == []
+    win.cfg["watch_games"] = True
+    win.apply_watch_setting()
+    win.watcher = main_window.watcher.Watcher(snapshot=lambda: [])
+    win._watch_tick()
+    deadline = time.monotonic() + 5
+    while win._watch_spec is None and time.monotonic() < deadline:
+        QApplication.processEvents()
+    assert [t.game_id for t in win._watch_targets] == ["gog:1453375253"]
+    assert "stardew valley.exe" in win._watch_targets[0].exes
+
+
+def test_start_with_windows_is_applied_from_settings(win, monkeypatch):
+    monkeypatch.setattr(autostart, "command", lambda: '"C:\\QResGUI.exe" --tray')
+    monkeypatch.setattr(SettingsDialog, "exec", lambda self: (self.start_with_windows.setChecked(True), 1)[1])
+    win.open_settings()
+    assert autostart.enabled()
+
+
+def test_started_with_windows_the_window_closes_to_the_tray(win):
+    win.started_in_tray = True
+    win.tray = win.tray or type("T", (), {"showMessage": lambda *a: None, "icon": lambda self: None,
+                                          "hide": lambda self: None})()
+    win.close()
+    assert win.isHidden() and not win._quitting
 
 
 def test_settings_dialog_applies(win):

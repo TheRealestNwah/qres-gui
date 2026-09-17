@@ -49,6 +49,7 @@ EXIT_GRACE = 3.0        # a game gone for this long is closed (covers self-resta
 EXIT_STEAM_RUNNING = 3     # remove-hooks: Steam must be closed first
 EXIT_PLAYNITE_RUNNING = 4  # remove-hooks: Playnite must be closed first
 GUARD_POLL = 2.0           # seconds between guard checks
+ADOPT_POLL = 1.0           # seconds between checks on a game that started without QRes
 
 
 class LaunchError(RuntimeError):
@@ -75,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
             return check_update()
         if argv[:1] == ["remove-hooks"] and len(argv) <= 2:
             return remove_hooks(argv[1] if len(argv) == 2 else None)
+        if len(argv) == 3 and argv[0] == "adopt":
+            return adopt(argv[1], int(argv[2]))
         if argv[:1] == ["guard"] and 2 <= len(argv) <= 4:
             return guard(int(argv[1]), argv[2] if len(argv) >= 3 else None)
     except Exception as exc:
@@ -816,6 +819,54 @@ def playnite_stop(payload: str) -> int:
     session.clear(token=data.get("token"))
     commands.run_all(data.get("after"), commands.AFTER, data.get("game_id") or "",
                      _game_name(data.get("game_id") or ""))
+    return 0
+
+
+def adopt(game_id: str, pid: int) -> int:
+    """Switch for a game that started without QRes (QRes GUI saw it), and back once it has gone.
+
+    `pid` is the process QRes GUI noticed; the game is followed by its install
+    folder and watched names, like the guard does, so a launcher handing over
+    to the real exe still counts.
+    """
+    cfg = config.load()
+    entry = (cfg.get("games") or {}).get(game_id)
+    if not entry or not entry.get("enabled"):
+        log.info("switching is off for %s; not adopting it", game_id)
+        return 0
+    active = session.read()
+    if active and session.owner_alive(active):
+        log.info("the display is already switched (for %s); leaving %s to it", active.get("game_id"), game_id)
+        return 0
+    install_dir = entry.get("install_dir") or os.path.dirname((entry.get("launch") or {}).get("path") or "")
+    game = _GameWatch({"install_dir": install_dir, "watch": entry.get("watch")})
+    if not game.running():
+        log.info("%s (pid %d) has already exited; nothing to switch", game_id, pid)
+        return 0
+    played.record(game_id)
+    log.info("%s started outside QRes (pid %d); switching while it runs", game_id, pid)
+    switch = _Switch(cfg, entry, game_id, install_dir=install_dir, source="watcher")
+    try:
+        switch.apply()
+    except Exception as exc:  # like run(): a failed switch is reported, never fatal
+        log.exception("couldn't switch for %s", game_id)
+        notify.notify(f"Couldn't switch the resolution for {switch.name}",
+                      f"It's running at your current resolution. ({exc})", game_id=game_id)
+        return 1
+    try:
+        grace = 0.0 if entry.get("quick_restore") else EXIT_GRACE
+        gone_since: float | None = None
+        while True:
+            if game.running():
+                gone_since = None
+            elif gone_since is None:
+                gone_since = time.monotonic()
+            elif time.monotonic() - gone_since >= grace:
+                break
+            time.sleep(ADOPT_POLL)
+        log.info("%s exited", game_id)
+    finally:
+        switch.restore()
     return 0
 
 
