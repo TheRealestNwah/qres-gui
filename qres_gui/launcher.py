@@ -33,7 +33,7 @@ from logging.handlers import RotatingFileHandler
 
 import psutil
 
-from . import commands, config, display, hdr, notify, paths, playnite, session
+from . import commands, config, display, hdr, notify, paths, played, playnite, session
 
 log = logging.getLogger("qres.launcher")
 
@@ -115,6 +115,7 @@ def run(game_id: str, command: list[str]) -> int:
     else:
         raise LaunchError(f"There's no launch target saved for {game_id}. Set the game up in QRes GUI first.")
 
+    played.record(game_id)
     watch = {w.strip().lower() for w in entry.get("watch", []) if w.strip()}
     quick = bool(entry.get("quick_restore"))
     started_from = command[0] if command else (entry.get("launch") or {}).get("path", "")
@@ -744,6 +745,7 @@ def playnite_start(payload: str) -> int:
                  info.get("name"), info.get("installDir"))
         playnite.remember(info)
         return 0
+    played.record(game_id)
     if not entry.get("enabled"):
         log.info("switching is off for %s", game_id)
         return 0

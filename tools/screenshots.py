@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,11 +18,12 @@ sys.path.insert(0, str(ROOT))
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
 os.environ["APPDATA"] = tempfile.mkdtemp(prefix="qres-shots-")
+os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="qres-shots-local-")   # never this PC's real install
 
 from PySide6.QtGui import QFont  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from qres_gui import display, paths, playnite, shortcuts, updates  # noqa: E402
+from qres_gui import display, hdr, paths, played, playnite, shortcuts, updates  # noqa: E402
 from qres_gui.gui import main_window, theme  # noqa: E402
 from qres_gui.gui.dialogs import PlayniteDialog, SettingsDialog  # noqa: E402
 from qres_gui.stores import Game, steam  # noqa: E402
@@ -32,13 +34,17 @@ MODES = [display.Mode(w, h, r) for w, h in ((3440, 1440), (2560, 1440), (2560, 1
          for r in (165, 144, 60)]
 work = Path(os.environ["APPDATA"])
 
-display.list_modes = lambda: list(MODES)
-display.current_mode = lambda: MODES[0]
+display.list_modes = lambda device=None: list(MODES)
+display.current_mode = lambda device=None: MODES[0]
 display.find_qres = lambda *a: r"C:\Tools\QRes\QRes.exe"
 display.monitor_count = lambda: 1
 display.set_mode = lambda *a, **k: "stub"  # screenshots must never change the real resolution
+display.list_displays = lambda: []
+hdr.status = lambda device=None: hdr.Status(supported=True, enabled=False)
 updates.check = lambda current=None: None
 paths.launcher_command = lambda: list(LAUNCHER)
+paths.hook_command = lambda: list(LAUNCHER)   # hooks name the (made-up) installed copy
+main_window.MainWindow.steam_hook_missing = lambda self, game: False   # that launcher isn't really there
 shortcuts.desktop_dir = lambda: work / "Desktop"
 shortcuts.start_menu_dir = lambda: work / "Programs" / "QRes GUI"
 (work / "Desktop").mkdir()
@@ -74,6 +80,9 @@ class DemoSteam:
     def launch_options(self):
         return dict(self.options)
 
+    def last_played(self):
+        return {"101": time.time() - 3600, "103": time.time() - 3 * 86400}
+
 
 main_window.detect_all = lambda client: (list(games), [])
 main_window.SteamClient = DemoSteam
@@ -83,6 +92,8 @@ app.setFont(QFont("Segoe UI", 9))
 theme.apply(app)
 OUT.mkdir(parents=True, exist_ok=True)
 
+played.record("gog:201", when=time.time() - 86400)
+played.record("legendary:Rift", when=time.time() - 40 * 86400)
 win = main_window.MainWindow()
 win.cfg["presets"] = [{"name": "1440p", "width": 2560, "height": 1440, "refresh": 0},
                       {"name": "Cinema", "width": 2560, "height": 1080, "refresh": 0},

@@ -185,18 +185,26 @@ class SteamClient:
         account = self.account_id()
         return self.root / "userdata" / account / "config" / "localconfig.vdf" if account else None
 
-    def launch_options(self) -> dict[str, str]:
+    def _apps(self) -> dict[str, vdf.KV]:
         path = self.localconfig_path()
         if not path:
             return {}
         apps = _read_vdf(path).block(*APPS_PATH)
         if apps is None:
             return {}
-        return {
-            appid: block.get("LaunchOptions", "")
-            for appid, block in apps.items()
-            if isinstance(block, vdf.KV)
-        }
+        return {appid: block for appid, block in apps.items() if isinstance(block, vdf.KV)}
+
+    def launch_options(self) -> dict[str, str]:
+        return {appid: block.get("LaunchOptions", "") for appid, block in self._apps().items()}
+
+    def last_played(self) -> dict[str, float]:
+        """When Steam last started each game, however it was started: {appid: unix time}."""
+        played = {}
+        for appid, block in self._apps().items():
+            value = str(block.get("LastPlayed", "") or "")
+            if value.isdigit() and int(value) > 0:
+                played[appid] = float(value)
+        return played
 
     def set_launch_options(self, updates: dict[str, str]) -> Path:
         """Write launch options for several apps at once; returns the backup file."""

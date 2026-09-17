@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import (__version__, commands, config, display, hdr, hooks, notify, paths, playnite, session,
+from .. import (__version__, commands, config, display, hdr, hooks, notify, paths, played, playnite, session,
                 shortcuts, updates)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
@@ -29,11 +29,23 @@ from .tray import Tray
 
 ICON_SIZE = QSize(92, 43)
 ROLE_ID = Qt.ItemDataRole.UserRole
+ROLE_SORT = Qt.ItemDataRole.UserRole + 1     # what a column sorts by, when not its text
+COLUMNS = ["Game", "Store", "Resolution", "Launch hook", "Last played"]
+COL_PLAYED = 4
 
 
 class GameItem(QTreeWidgetItem):
     def __lt__(self, other: QTreeWidgetItem) -> bool:
-        column = self.treeWidget().sortColumn() if self.treeWidget() else 0
+        tree = self.treeWidget()
+        column = tree.sortColumn() if tree else 0
+        if column == COL_PLAYED:
+            mine, theirs = float(self.data(column, ROLE_SORT) or 0), float(other.data(column, ROLE_SORT) or 0)
+            if mine != theirs:
+                return mine < theirs
+            # Played the same moment, or never: A to Z, whichever way the column is sorted.
+            descending = bool(tree) and tree.header().sortIndicatorOrder() == Qt.SortOrder.DescendingOrder
+            before = self.text(0).casefold() < other.text(0).casefold()
+            return not before if descending else before
         return self.text(column).casefold() < other.text(column).casefold()
 
 
@@ -51,6 +63,9 @@ class MainWindow(QMainWindow):
         self.games: dict[str, Game] = {}
         self.items: dict[str, GameItem] = {}
         self.launch_opts: dict[str, str] = {}
+        self.steam_played: dict[str, float] = {}    # Steam's own last-played times, by appid
+        self.played: dict[str, float] = {}          # launches through QRes (played.json)
+        self._played_seen = (-1.0, "")              # (played.json's mtime, the day) the column shows
         self.playnite_state = "missing"
         self._icons: dict[str, QPixmap] = {}
         self._save_timer = QTimer(self, singleShot=True, interval=400, timeout=self._save_now)
@@ -144,17 +159,24 @@ class MainWindow(QMainWindow):
         lv.addLayout(filters)
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Game", "Store", "Resolution", "Launch hook"])
+        self.tree.setHeaderLabels(COLUMNS)
+        self.tree.headerItem().setToolTip(COL_PLAYED, "When the game was last started through QRes, "
+                                                      "or by Steam for Steam games")
         self.tree.setRootIsDecorated(False)
         self.tree.setIconSize(ICON_SIZE)
         self.tree.setUniformRowHeights(True)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSortingEnabled(True)
-        self.tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         header = self.tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in (1, 2, 3):
+        for column in range(1, len(COLUMNS)):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        sort = self.cfg.get("list_sort") or {}
+        column = sort.get("column") if sort.get("column") in range(len(COLUMNS)) else 0
+        self._sort_column = column
+        self.tree.sortByColumn(column, Qt.SortOrder.DescendingOrder if sort.get("descending")
+                               else Qt.SortOrder.AscendingOrder)
+        header.sortIndicatorChanged.connect(self._on_sort_changed)
         self.tree.currentItemChanged.connect(self._on_select)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._game_menu)
@@ -619,6 +641,7 @@ class MainWindow(QMainWindow):
             return
         try:
             self.launch_opts = self.steam.launch_options()
+            self.steam_played = self.steam.last_played()
         except (OSError, ValueError) as exc:
             self.launch_opts = {}
             self.statusBar().showMessage(f"Couldn't read Steam launch options: {exc}", 10000)
@@ -739,6 +762,8 @@ class MainWindow(QMainWindow):
     # --- list --------------------------------------------------------------
 
     def _populate(self) -> None:
+        self.played = played.load()
+        self._played_seen = (played.mtime(), time.strftime("%Y-%m-%d"))
         selected = self.detail.game.id if self.detail.game else None
         self.tree.setSortingEnabled(False)
         self.tree.clear()
@@ -779,6 +804,46 @@ class MainWindow(QMainWindow):
         item.setText(3, text)
         color = {"ok": theme.OK, "warn": theme.WARN}.get(kind, theme.MUTED)
         item.setForeground(3, QBrush(QColor(color)))
+        self._fill_played(game)
+
+    # --- last played ------------------------------------------------------------
+
+    def last_played(self, game: Game) -> float:
+        """When the game was last started: through QRes, or by Steam for a Steam game. 0 if never."""
+        steam_time = self.steam_played.get(game.id[6:], 0.0) if game.store == "steam" else 0.0
+        return max(self.played.get(game.id, 0.0), steam_time)
+
+    def _fill_played(self, game: Game) -> None:
+        item = self.items[game.id]
+        when = self.last_played(game)
+        item.setText(COL_PLAYED, played.describe(when))
+        item.setData(COL_PLAYED, ROLE_SORT, when)
+        item.setToolTip(COL_PLAYED, time.strftime("%d %B %Y, %H:%M", time.localtime(when)) if when else "")
+        item.setForeground(COL_PLAYED, QBrush(QColor("#e4e6ea" if when else theme.MUTED)))
+
+    def _refresh_played(self) -> None:
+        """Pick up a launch the launcher noted, or a new day turning "Today" into "Yesterday"."""
+        seen = (played.mtime(), time.strftime("%Y-%m-%d"))
+        if seen == self._played_seen:
+            return
+        self._played_seen = seen
+        self.played = played.load()
+        sorting = self.tree.isSortingEnabled()
+        self.tree.setSortingEnabled(False)          # re-sort once, not once per row
+        for game_id in self.items:
+            self._fill_played(self.games[game_id])
+        self.tree.setSortingEnabled(sorting)
+
+    def _on_sort_changed(self, column: int, order: Qt.SortOrder) -> None:
+        if column == COL_PLAYED and self._sort_column != COL_PLAYED and order == Qt.SortOrder.AscendingOrder:
+            # Most recent first is what anyone sorting by Last played wants to see. Once
+            # this signal is done: the tree's own sort also answers it, and may come after us.
+            self._sort_column = column
+            QTimer.singleShot(0, lambda: self.tree.sortByColumn(column, Qt.SortOrder.DescendingOrder))
+            return
+        self._sort_column = column
+        self.cfg["list_sort"] = {"column": column, "descending": order == Qt.SortOrder.DescendingOrder}
+        self.save()
 
     @property
     def playnite_hooked(self) -> bool:
@@ -1212,6 +1277,7 @@ class MainWindow(QMainWindow):
 
     def _poll_state(self) -> None:
         self._refresh_events()
+        self._refresh_played()
         self._pick_up_playnite_games()
         try:
             current = display.current_mode()
@@ -1237,6 +1303,6 @@ class MainWindow(QMainWindow):
                 if not running:
                     # Steam rewrites localconfig.vdf on exit; pick up what it saved.
                     self._reload_launch_options()
-                    self.refresh_rows()
+                    self.refresh_rows()                # its last-played times come with it
                 self._update_sync_button()
                 self.detail.refresh_integration()

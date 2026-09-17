@@ -49,6 +49,8 @@ DEFAULTS: dict = {
     # command lines run just before every game's switch and after it's undone
     # (see commands.py); games can add their own in their profile's "commands"
     "commands": {"before": "", "after": ""},
+    # how the game list is sorted: column index, and whether it's reversed
+    "list_sort": {"column": 0, "descending": False},
     "games": {},
 }
 

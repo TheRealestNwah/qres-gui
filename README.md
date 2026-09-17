@@ -87,6 +87,10 @@ the list; a hidden game keeps its profile and still switches when you start it.
 While anything is hidden, the line under the list says how many, with a
 **Show** link to bring them back (right-click › **Show in list**).
 
+Click a column heading to sort the list. **Last played** says when a game was
+last started through QRes, or by Steam for Steam games, whichever is later;
+sorting by it puts the most recent first. The list remembers how you sorted it.
+
 ### Playnite
 
 **Settings › Integrations › Playnite integration… › Add to Playnite** adds a short block to
