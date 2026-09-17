@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -483,7 +484,8 @@ def test_update_banner(win, monkeypatch):
     release, error = win.check_for_updates(wait=True)
     assert release["version"] == "99.0.0" and not error
     assert not win.update_bar.isHidden() and "99.0.0 is available" in win.update_label.text()
-    assert config.load()["update_available"] == {"version": "99.0.0", "url": "https://x/v99"}
+    assert config.load()["update_available"] == {"version": "99.0.0", "url": "https://x/v99", "download": None}
+    assert win.install_update_btn.isHidden()         # no zip to install from
 
     win._dismiss_update()  # "Later"
     assert win.update_bar.isHidden()
@@ -492,6 +494,86 @@ def test_update_banner(win, monkeypatch):
 
     win._on_update_result({"version": "99.1.0", "url": "u"}, "")
     assert not win.update_bar.isHidden()  # ...but not for the next one
+
+
+DOWNLOAD = {"url": updates.DOWNLOADS + "v99.0.0/QResGUI-99.0.0-win64.zip", "size": 36_000_000, "sha256": "ab" * 32}
+
+
+def offer(win, monkeypatch, installed=True):
+    monkeypatch.setattr(paths, "is_installed_copy", lambda: installed)
+    win._on_update_result({"version": "99.0.0", "url": "u", "download": DOWNLOAD}, "")
+
+
+def test_only_the_installed_copy_offers_to_install(win, monkeypatch):
+    offer(win, monkeypatch, installed=False)
+    assert not win.update_bar.isHidden() and win.install_update_btn.isHidden()
+    assert win.whats_new_btn.objectName() == "primary"
+    offer(win, monkeypatch, installed=True)
+    assert not win.install_update_btn.isHidden() and win.whats_new_btn.objectName() == ""
+
+
+def test_install_update_downloads_then_hands_over_and_quits(win, monkeypatch, tmp_path):
+    monkeypatch.setenv("TEMP", str(tmp_path))
+    offer(win, monkeypatch)
+    calls, asked = [], []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: asked.append(a[2]) or QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(updates, "fetch", lambda download, dest, progress=None: calls.append(("fetch", download)) or dest)
+    monkeypatch.setattr(updates, "unpack", lambda zip_path, folder, version: calls.append(("unpack", version)) or folder)
+    monkeypatch.setattr(updates, "start_install", lambda source, version: calls.append(("install", source, version)))
+    monkeypatch.setattr(win, "quit_app", lambda: calls.append(("quit",)))
+    assert win.install_update(wait=True)
+    assert "99.0.0 (34 MB)" in asked[0]
+    assert calls == [("fetch", DOWNLOAD), ("unpack", "99.0.0"),
+                     ("install", updates.work_root() / "99.0.0", "99.0.0"), ("quit",)]
+
+
+def test_install_update_in_the_background_shows_progress(win, monkeypatch, tmp_path):
+    monkeypatch.setenv("TEMP", str(tmp_path))
+    offer(win, monkeypatch)
+    done = []
+
+    def fetch(download, dest, progress=None):
+        for part in (1, 2):
+            assert progress(part * 18_000_000, 36_000_000)
+        return dest
+    monkeypatch.setattr(updates, "fetch", fetch)
+    monkeypatch.setattr(updates, "unpack", lambda zip_path, folder, version: folder)
+    monkeypatch.setattr(updates, "start_install", lambda source, version: done.append(version))
+    monkeypatch.setattr(win, "quit_app", lambda: done.append("quit"))
+    assert win.install_update()
+    deadline = time.monotonic() + 10
+    while done != ["99.0.0", "quit"] and time.monotonic() < deadline:
+        QApplication.processEvents()
+    assert done == ["99.0.0", "quit"] and not win._update_dialog.isVisible()
+
+
+def test_install_update_says_no_during_a_game_and_reports_failures(win, monkeypatch):
+    offer(win, monkeypatch)
+    quits, told = [], []
+    monkeypatch.setattr(win, "quit_app", lambda: quits.append(1))
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: told.append(a[2]))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: told.append(a[2]))
+    monkeypatch.setattr(session, "read", lambda: {"pid": 1, "game_id": "steam:10"})
+    monkeypatch.setattr(session, "owner_alive", lambda data: True)
+    assert not win.install_update(wait=True) and "running through QRes" in told[-1]
+
+    monkeypatch.setattr(session, "read", lambda: None)
+    def bad(*a, **k):
+        raise updates.UpdateError("The download doesn't match the checksum GitHub lists for it.")
+    monkeypatch.setattr(updates, "fetch", bad)
+    assert not win.install_update(wait=True) and "checksum" in told[-1]
+    assert quits == []                                 # QRes GUI stays open with the version it has
+
+
+def test_start_reports_how_an_update_went(win, monkeypatch):
+    told = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: told.append(a[2]))
+    monkeypatch.setattr(updates, "take_result", lambda: {"version": __version__, "ok": True, "error": ""})
+    win._report_update_result()
+    assert win.statusBar().currentMessage() == f"Updated to QRes GUI {__version__}." and not told
+    monkeypatch.setattr(updates, "take_result", lambda: {"version": "99.0.0", "ok": False, "error": "It's running."})
+    win._report_update_result()
+    assert "99.0.0 couldn't be installed" in told[0] and "It's running." in told[0]
 
 
 def test_update_check_failures_stay_quiet(win, monkeypatch):

@@ -11,7 +11,7 @@ from PySide6.QtCore import QFileInfo, QRect, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QBrush, QColor, QDesktopServices, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFileIconProvider, QFrame, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QMainWindow, QMenu, QMessageBox, QPushButton, QSplitter, QStatusBar, QTreeWidget,
+    QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressDialog, QPushButton, QSplitter, QStatusBar, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(500, self._ensure_qres)
         self._update_found.connect(self._on_update_result)
         self._show_update_bar()                  # from an earlier check
+        QTimer.singleShot(800, self._report_update_result)
         QTimer.singleShot(1500, self._auto_check_updates)
         self._setup_tray_and_hotkeys()
 
@@ -340,7 +341,10 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(18, 8, 18, 8)
         self.update_label = QLabel()
         row.addWidget(self.update_label, 1)
-        row.addWidget(QPushButton("What's new", objectName="primary", clicked=self._open_update_page))
+        self.install_update_btn = QPushButton("Install update", objectName="primary", clicked=self.install_update)
+        self.whats_new_btn = QPushButton("What's new", clicked=self._open_update_page)
+        row.addWidget(self.install_update_btn)
+        row.addWidget(self.whats_new_btn)
         row.addWidget(QPushButton("Later", clicked=self._dismiss_update))
         self.update_bar.hide()
         return self.update_bar
@@ -375,7 +379,8 @@ class MainWindow(QMainWindow):
         if error:
             return  # offline or GitHub unreachable: try again another day
         self.cfg["update_last_check"] = time.time()
-        self.cfg["update_available"] = {"version": release["version"], "url": release["url"]} if release else None
+        self.cfg["update_available"] = {"version": release["version"], "url": release["url"],
+                                        "download": release.get("download")} if release else None
         self._save_now()
         self._show_update_bar()
 
@@ -386,7 +391,114 @@ class MainWindow(QMainWindow):
         if show:
             self.update_label.setText(f"<b>QRes GUI {html.escape(version)} is available</b>"
                                       f"&nbsp;&nbsp;<span style='color:{theme.MUTED}'>You have {__version__}.</span>")
+            # Only the installed copy updates itself: installing always goes to the
+            # install folder, which isn't where an unzipped or source copy runs from.
+            can_install = self.can_install_update()
+            self.install_update_btn.setVisible(can_install)
+            self.whats_new_btn.setObjectName("" if can_install else "primary")
+            self.whats_new_btn.style().unpolish(self.whats_new_btn)
+            self.whats_new_btn.style().polish(self.whats_new_btn)
         self.update_bar.setVisible(show)
+
+    def can_install_update(self) -> bool:
+        available = self.cfg.get("update_available") or {}
+        return bool(available.get("download")) and paths.is_installed_copy()
+
+    _update_progress = Signal(int, int)       # (bytes so far, total); from the download thread
+    _update_fetched = Signal(object, str)     # (unpacked folder or None, error text)
+
+    def install_update(self, wait: bool = False) -> bool:
+        """Download the new release, then close so its installer can run. True once handed over."""
+        available = self.cfg.get("update_available") or {}
+        version, download = available.get("version", ""), available.get("download")
+        if not (download and updates.is_newer(version, __version__)):
+            return False
+        active = session.read()
+        if active and session.owner_alive(active):
+            QMessageBox.information(self, "Install update",
+                                    "A game is running through QRes. Install the update once you've quit it — "
+                                    "installing replaces the launcher that's switching the display back.")
+            return False
+        size = int(download.get("size") or 0)
+        answer = QMessageBox.question(
+            self, "Install update",
+            f"Download QRes GUI {version}{f' ({size / 1048576:.0f} MB)' if size else ''} from GitHub and "
+            "install it?\n\nQRes GUI closes, installs the update and opens again. Your profiles, settings, "
+            "Steam launch options and Playnite scripts stay as they are.")
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
+
+        folder = updates.work_root() / version
+        cancelled = threading.Event()
+
+        def work(progress) -> tuple[Path | None, str]:
+            try:
+                zip_path = updates.fetch(download, folder.with_suffix(".zip"),
+                                         lambda done, total: progress(done, total) and not cancelled.is_set())
+                return updates.unpack(zip_path, folder, version), ""
+            except updates.UpdateError as exc:
+                return None, str(exc)
+
+        if wait:
+            return self._on_update_fetched(*work(lambda *_: True), version=version)
+
+        dialog = QProgressDialog(f"Downloading QRes GUI {version}…", "Cancel", 0, max(size, 1), self)
+        dialog.setWindowTitle("Install update")
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        dialog.setMinimumDuration(0)
+        dialog.canceled.connect(cancelled.set)
+        self._update_dialog = dialog
+
+        def progress(done: int, total: int) -> bool:
+            self._update_progress.emit(done, total)
+            return True
+
+        def on_progress(done: int, total: int) -> None:
+            if total:
+                dialog.setMaximum(total)
+            dialog.setValue(min(done, dialog.maximum()))
+
+        def on_fetched(source, error: str) -> None:
+            self._update_progress.disconnect(on_progress)
+            self._update_fetched.disconnect(on_fetched)
+            was_cancelled = cancelled.is_set()
+            dialog.canceled.disconnect(cancelled.set)   # closing it counts as Cancel
+            dialog.close()
+            if not was_cancelled:
+                self._on_update_fetched(source, error, version=version)
+
+        self._update_progress.connect(on_progress)
+        self._update_fetched.connect(on_fetched)
+        threading.Thread(target=lambda: self._update_fetched.emit(*work(progress)),
+                         name="update-download", daemon=True).start()
+        return True
+
+    def _on_update_fetched(self, source: Path | None, error: str, version: str) -> bool:
+        if source is None:
+            QMessageBox.warning(self, "Install update",
+                                f"{error}\n\nYou can also download it from the releases page and run install.cmd.")
+            return False
+        try:
+            updates.start_install(source, version)
+        except updates.UpdateError as exc:
+            QMessageBox.warning(self, "Install update", str(exc))
+            return False
+        self.quit_app()
+        return True
+
+    def _report_update_result(self) -> None:
+        """Say how an in-app update went, on the first start after it."""
+        result = updates.take_result()
+        if not result:
+            return
+        if result["ok"] and result["version"] == __version__:
+            self.statusBar().showMessage(f"Updated to QRes GUI {__version__}.", 15000)
+        else:
+            detail = result["error"] or "The installer didn't finish."
+            QMessageBox.warning(self, "Update not installed",
+                                f"QRes GUI {result['version'] or 'the new version'} couldn't be installed, so you "
+                                f"still have {__version__}.\n\n{detail}\n\nThe installer's log is "
+                                f"{updates.log_path()}.")
 
     def _open_update_page(self) -> None:
         url = (self.cfg.get("update_available") or {}).get("url") or updates.RELEASES_PAGE

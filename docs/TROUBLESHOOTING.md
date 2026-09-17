@@ -111,8 +111,16 @@ they work at all.
 **Settings › Updates › Check now** says whether GitHub has a newer release. If
 it can't reach GitHub (offline, a firewall, a proxy), it says so and the daily
 check simply tries again another day. `QResLauncher.exe check-update` writes
-the same result to the log. Updating means downloading the new zip from the
-release page and running `install.cmd`; your settings and hooks are kept.
+the same result to the log.
+
+**Install update** only appears in the installed copy (an unzipped or source
+copy can't update the install folder it isn't running from) and only for a
+release whose zip GitHub lists a checksum for; otherwise use **What's new**,
+download the zip and run `install.cmd`. If an update doesn't install — say,
+QRes GUI didn't close within a minute — QRes GUI opens again at the version you
+had and says why; the installer's output is in `%APPDATA%\QResGUI\update.log`.
+A game started through QRes has to be closed first. Your settings and hooks are
+kept either way.
 
 ## A preset or quick switch doesn't work
 

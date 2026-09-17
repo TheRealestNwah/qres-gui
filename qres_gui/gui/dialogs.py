@@ -205,7 +205,7 @@ class SettingsDialog(QDialog):
         row.addStretch()
         form.addRow("Check", row)
         form.addRow("", _hint("Asks GitHub for this project's release list; nothing about your PC or games is "
-                              "sent, and nothing is downloaded or installed for you."))
+                              "sent. Nothing is downloaded until you click Install update."))
 
         form = self._page("Help && About")
         row = _button_row()
