@@ -85,6 +85,8 @@ try {
 
     Remove-Item $menu -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item $uninstallKey -Recurse -Force -ErrorAction SilentlyContinue
+    # "Start with Windows" (Settings > Tray & hotkeys), so nothing starts a program that's gone.
+    Remove-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "QRes GUI" -ErrorAction SilentlyContinue
     Remove-Item "HKCU:\Software\Classes\AppUserModelId\QResGUI" -Recurse -Force -ErrorAction SilentlyContinue
 
     $deleteSettings = $RemoveSettings

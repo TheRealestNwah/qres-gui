@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton, QRadioButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from .. import __version__, diagnostics, display, notify, paths, playnite, transfer
+from .. import __version__, autostart, diagnostics, display, notify, paths, playnite, transfer
 from . import theme
 
 
@@ -135,6 +135,13 @@ class SettingsDialog(QDialog):
         self.tray_icon.setChecked(bool(cfg.get("tray_icon", True)))
         self.background = QCheckBox("Keep running in the tray when the window is closed")
         self.background.setChecked(bool(cfg.get("background", False)))
+        self.start_with_windows = QCheckBox("Start with Windows, in the tray")
+        self.start_with_windows.setChecked(autostart.enabled())
+        if not autostart.command():
+            self.start_with_windows.setEnabled(False)
+            self.start_with_windows.setToolTip("Only a built copy of QRes GUI can start with Windows.")
+        self.watch_games = QCheckBox("Switch for games however they're started")
+        self.watch_games.setChecked(bool(cfg.get("watch_games", False)))
         self.restore_hotkey = QKeySequenceEdit()
         self.restore_hotkey.setMaximumSequenceLength(1)
         if cfg.get("restore_hotkey"):
@@ -169,10 +176,15 @@ class SettingsDialog(QDialog):
         form.addRow("After every switch", self.after_cmd)
         form.addRow("", _hint("Commands run as in a Command Prompt for every game, before its own commands "
                               "and after them. QRES_GAME and QRES_GAME_ID say which game it is."))
+        form.addRow("Other launchers", _left(self.watch_games))
+        form.addRow("", _hint("For stores QRes can't hook, like the Xbox, EA and Ubisoft apps: while QRes GUI "
+                              "runs, a game with switching on switches a moment after it starts, from "
+                              "wherever it was started. Keep QRes GUI in the tray (Tray & hotkeys) for this."))
 
         form = self._page("Tray && hotkeys")
         form.addRow("Tray icon", _left(self.tray_icon))
         form.addRow("", _left(self.background))
+        form.addRow("Startup", _left(self.start_with_windows))
         form.addRow("Restore hotkey", hotkey_row)
         form.addRow("", _hint("Switches back to your desktop resolution from anywhere, even in a game, while "
                               "QRes GUI is running. Needs a modifier, e.g. Ctrl+Alt+Home. Presets get their "
@@ -314,6 +326,7 @@ class SettingsDialog(QDialog):
         cfg["check_updates"] = self.check_updates.isChecked()
         cfg["tray_icon"] = self.tray_icon.isChecked()
         cfg["background"] = self.background.isChecked()
+        cfg["watch_games"] = self.watch_games.isChecked()
         cfg["restore_hotkey"] = self.restore_hotkey.keySequence().toString()
         cfg["commands"] = {"before": self.before_cmd.text().strip(), "after": self.after_cmd.text().strip()}
 
