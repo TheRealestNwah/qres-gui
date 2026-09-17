@@ -4,7 +4,15 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
-## Unreleased
+## 1.8.0 — 2026-09-16
+
+Install updates from inside the app, see what you played last, and a fix for
+the engine detection found while testing 1.7.0. Checked before release: the
+build starts and its launcher runs and records a launch in a throwaway
+profile; the game list and engine detection were run against a real Steam
+library; and an update download was checked against the real 1.7.0 release
+on GitHub. **Install update** itself can only be tried for real once there's a
+release after 1.8.0 to update to.
 
 ### Added
 - **Install update**, right from the update banner. It downloads the release
