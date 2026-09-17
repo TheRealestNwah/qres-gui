@@ -81,6 +81,26 @@ How the launcher gets in the loop depends on the store:
 For non-Steam games, start the game from the `… (QRes)` shortcut (or **Play**),
 not from the store's own button. The store can't be told to go through the launcher.
 
+### Games started some other way
+
+**Settings › Switching › Switch for games however they're started** covers the
+rest: the Xbox app, the EA app, Ubisoft Connect, Battle.net, a store's own Play
+button. While QRes GUI is running, it notices a game with switching on starting
+— an exe inside that game's install folder, or a process name the profile
+watches — and hands it to the launcher, which switches while the game runs and
+back once it's gone, with the same guard and restore as any other launch. Hooks
+still come first: a game started through Steam's launch options, Playnite or a
+QRes shortcut has already switched, and isn't switched twice. Runtime
+installers, crash reporters and uninstallers in a game's folder don't count.
+
+The switch comes a moment after the game starts rather than before, so a game
+that reads the screen size in its first second may still see the old one; a
+hook is better wherever the store has one. QRes GUI has to be running for this,
+so turn on **Keep running in the tray** or **Start with Windows, in the tray**
+(Settings › Tray & hotkeys). A game already running when QRes GUI starts isn't
+switched. Games covered this way show **When it starts** in the Launch hook
+column.
+
 Games you never want to see — tools, soundtracks, things you've finished — can
 be taken out of the list: right-click › **Hide from list**. Hiding only tidies
 the list; a hidden game keeps its profile and still switches when you start it.

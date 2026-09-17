@@ -7,6 +7,19 @@ it has been proven on real hardware.
 ## Unreleased
 
 ### Added
+- **Switch for games however they're started** (Settings › Switching). For
+  stores QRes can't hook — the Xbox app, EA app, Ubisoft Connect, Battle.net, a
+  store's own Play button — QRes GUI, while it runs, notices a game with
+  switching on starting (an exe in its install folder, or a watched process
+  name) and hands it to the launcher, which switches while the game runs and
+  back once it's gone, with the usual guard, restore and after-commands.
+  Hooks still come first, so nothing switches twice, and runtime installers,
+  crash reporters and uninstallers in game folders are ignored. The switch
+  lands a moment after the game starts, so hooks stay the better choice where
+  a store has them. Such games show **When it starts** in the list.
+- **Start with Windows, in the tray** (Settings › Tray & hotkeys), so QRes GUI
+  is there to notice games starting. The startup entry always names the
+  installed copy, and uninstalling removes it.
 - **Scaling per game** in the Display box: *Keep aspect ratio*, *Centered, no
   scaling* or *Stretch to fill* for a game running at a size smaller than the
   display — on an ultrawide, black bars at the sides instead of a stretched
