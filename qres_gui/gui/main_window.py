@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import os
 import re
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -15,8 +16,8 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import (__version__, commands, config, display, hdr, hooks, notify, paths, played, playnite, scaling,
-                session, shortcuts, updates)
+from .. import (__version__, autostart, commands, config, display, hdr, hooks, notify, paths, played, playnite,
+                scaling, session, shortcuts, updates, watcher)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
@@ -76,6 +77,12 @@ class MainWindow(QMainWindow):
         self._told_tray = False
         self._last_mode_str = ""
         self._show_hidden = False     # the "N hidden · Show" link under the list
+        self.started_in_tray = False  # started with Windows, so closing the window keeps it running
+        self.watcher: watcher.Watcher | None = None
+        self._watch_targets: list[watcher.Target] = []
+        self._watch_spec: list | None = None      # what the targets were built from
+        self._watch_building = False
+        self._watch_cooldown: dict[str, float] = {}
 
         self._init_defaults()
         self._build_ui()
@@ -94,6 +101,9 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(800, self._report_update_result)
         QTimer.singleShot(1500, self._auto_check_updates)
         self._setup_tray_and_hotkeys()
+        self._targets_built.connect(self._on_targets_built)
+        self._watch_timer = QTimer(self, interval=1000, timeout=self._watch_tick)
+        self.apply_watch_setting()
 
     # --- setup -------------------------------------------------------------
 
@@ -694,7 +704,7 @@ class MainWindow(QMainWindow):
             self._save_timer.stop()
             self._save_now()
         # Keep running in the tray if asked, unless we're really quitting.
-        if not self._quitting and self.tray and self.cfg.get("background"):
+        if not self._quitting and self.tray and (self.cfg.get("background") or self.started_in_tray):
             event.ignore()
             self.hide()
             if not self._told_tray:
@@ -819,6 +829,68 @@ class MainWindow(QMainWindow):
     def _fit_columns(self) -> None:
         self.tree.setColumnWidth(COL_HOOK, min(self.tree.sizeHintForColumn(COL_HOOK) + 12, HOOK_WIDTH))
 
+    # --- switching for games started without QRes -----------------------------
+
+    _targets_built = Signal(object, object)   # (spec, targets); from the thread that walks game folders
+    ADOPT_COOLDOWN = 30.0                      # seconds before the same game can be adopted again
+
+    def apply_watch_setting(self) -> None:
+        if self.cfg.get("watch_games"):
+            if self.watcher is None:
+                self.watcher = watcher.Watcher()
+                self._watch_spec = None
+                self._watch_timer.start()
+        else:
+            self._watch_timer.stop()
+            self.watcher = None
+            self._watch_targets = []
+
+    def watch_spec(self) -> list[tuple[str, str, list[str]]]:
+        """(game id, install folder, watched names) for every game with switching on."""
+        spec = []
+        for game_id, entry in sorted(self.cfg["games"].items()):
+            if not entry.get("enabled"):
+                continue
+            game = self.games.get(game_id)
+            folder = (game.install_dir if game else "") or entry.get("install_dir") or \
+                os.path.dirname((entry.get("launch") or {}).get("path") or "")
+            spec.append((game_id, folder, sorted(entry.get("watch") or [])))
+        return spec
+
+    def _watch_tick(self) -> None:
+        if self.watcher is None:
+            return
+        spec = self.watch_spec()
+        if spec != self._watch_spec and not self._watch_building:
+            self._watch_building = True
+            threading.Thread(target=lambda: self._targets_built.emit(spec, watcher.build_targets(spec)),
+                             name="watch-targets", daemon=True).start()
+        for game_id, pid in self.watcher.poll(self._watch_targets):
+            self.adopt_game(game_id, pid)
+
+    def _on_targets_built(self, spec, targets) -> None:
+        self._watch_building = False
+        self._watch_spec, self._watch_targets = spec, targets
+
+    def adopt_game(self, game_id: str, pid: int) -> bool:
+        """Hand a game that started without QRes to the launcher; True if it was."""
+        now = time.monotonic()
+        if self._watch_cooldown.get(game_id, 0) > now:
+            return False   # its other processes, or a restart, while the launcher already has it
+        active = session.read()
+        if active and session.owner_alive(active):
+            return False   # a hook, Playnite or another game already switched
+        self._watch_cooldown[game_id] = now + self.ADOPT_COOLDOWN
+        name = (self.cfg["games"].get(game_id) or {}).get("name", game_id)
+        try:
+            subprocess.Popen(paths.hook_command() + ["adopt", game_id, str(pid)],
+                             creationflags=0x00000008 | 0x00000200, close_fds=True)   # detached, own group
+        except OSError as exc:
+            self.statusBar().showMessage(f"Couldn't switch for {name}: {exc}", 10000)
+            return False
+        self.statusBar().showMessage(f"{name} started outside QRes; switching while it runs.", 8000)
+        return True
+
     # --- last played ------------------------------------------------------------
 
     def last_played(self, game: Game) -> float:
@@ -874,6 +946,8 @@ class MainWindow(QMainWindow):
                 return "Launch options need updating", "warn"
             if enabled and self.playnite_hooked:
                 return "Playnite only", "ok"
+            if enabled and self.cfg.get("watch_games"):
+                return "When it starts", "ok"
             return ("Launch options not set", "warn") if enabled else ("—", "off")
         found = shortcuts.existing(game.name)
         if found:
@@ -883,6 +957,8 @@ class MainWindow(QMainWindow):
             return f"Shortcut: {where}", "ok" if enabled else "off"
         if self.playnite_hooked:
             return ("Playnite", "ok") if enabled else ("—", "off")
+        if enabled and self.cfg.get("watch_games"):
+            return "When it starts", "ok"
         if not game.launch:  # only startable from Playnite
             return ("Needs Playnite setup", "warn") if enabled else ("—", "off")
         return ("No shortcut yet", "warn") if enabled else ("—", "off")
@@ -1111,6 +1187,11 @@ class MainWindow(QMainWindow):
             dialog.apply_to(self.cfg)
             self._save_now()
             self._sync_tray()
+            if dialog.start_with_windows.isEnabled() and dialog.start_with_windows.isChecked() != autostart.enabled():
+                if not autostart.set_enabled(dialog.start_with_windows.isChecked()):
+                    QMessageBox.warning(self, "Start with Windows", "Windows wouldn't change the startup entry.")
+            self.apply_watch_setting()
+            self.refresh_rows()
             failed = self.apply_hotkeys()
             if failed:
                 QMessageBox.warning(self, "Hotkeys",

@@ -194,6 +194,23 @@ Windows refused the change, a notification says so and the game starts with
 the display's own scaling; `launcher.log` has the detail. At the display's own
 resolution there's nothing to scale, so the choice does nothing there.
 
+## A game started from its own launcher didn't switch
+
+That needs **Switch for games however they're started** (Settings ›
+Switching), and QRes GUI running at the time — in the tray is enough. Then:
+
+- The game needs switching on, and QRes has to know its install folder (shown
+  under the game's name) or a watched process name in its **Game process** box.
+  A game whose exe lives outside its install folder needs the process name.
+- It switches a second or so after the game starts. A game that fixes its
+  window size straight away can miss it: set a hook up if the store has one, or
+  change the resolution in the game once it's running.
+- Nothing happens if something already switched the display, or for a game
+  that was running before QRes GUI started.
+
+`launcher.log` shows `started outside QRes (pid …); switching while it runs`
+when it worked.
+
 ## Extra arguments aren't being used
 
 The game's **Extra arguments** box says where they apply for that game. In short:

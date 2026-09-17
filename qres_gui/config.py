@@ -50,6 +50,9 @@ DEFAULTS: dict = {
     # command lines run just before every game's switch and after it's undone
     # (see commands.py); games can add their own in their profile's "commands"
     "commands": {"before": "", "after": ""},
+    # switch for games with switching on however they're started, while QRes GUI
+    # runs (watcher.py) - for stores QRes can't put its launcher in front of
+    "watch_games": False,
     # how the game list is sorted: column index, and whether it's reversed
     "list_sort": {"column": 0, "descending": False},
     "games": {},
