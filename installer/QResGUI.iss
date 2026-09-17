@@ -41,6 +41,9 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
+; 64-bit mode, so Exec starts 64-bit cmd and PowerShell: a 32-bit one can't read a 64-bit
+; process's path, and install.ps1 would miss QRes GUI running.
+ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 
 [Messages]
