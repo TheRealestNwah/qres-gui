@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from .. import config, display, engines, hdr, paths, playnite, shortcuts
+from .. import config, display, engines, hdr, paths, playnite, scaling, shortcuts
 from ..stores import Game, steam
 from . import theme
 from .dialogs import TestResolutionDialog
@@ -24,6 +24,8 @@ BANNER_WIDTH = 460
 # "" means leave HDR alone; the launcher stores that as null.
 HDR_CHOICES = (("Leave as it is", ""), ("Turn on for this game", "on"), ("Turn off for this game", "off"))
 HDR_HINT = "Switched when the game starts and put back when it exits."
+SCALING_HINT = ("How a smaller resolution fills the display. Your graphics driver decides whether to follow "
+                "it; for NVIDIA, set scaling to happen on the GPU in NVIDIA Control Panel.")
 
 
 def _row(*widgets, stretch_after: int | None = None) -> QHBoxLayout:
@@ -118,9 +120,16 @@ class DetailPanel(QScrollArea):
         form.addRow("Resolution", self.res_combo)
         form.addRow("Refresh rate", self.rate_combo)
         form.addRow("HDR", self.hdr_combo)
-        layout.addLayout(form)
         self.hdr_hint = _muted(HDR_HINT)
-        layout.addWidget(self.hdr_hint)
+        form.addRow(self.hdr_hint)              # spans the form, so the rows below stay lined up
+        self.scaling_combo = QComboBox()
+        for label, key in scaling.LABELS:
+            self.scaling_combo.addItem(label, key)
+        self.scaling_combo.currentIndexChanged.connect(self._on_scaling)
+        form.addRow("Scaling", self.scaling_combo)
+        self.scaling_hint = _muted(SCALING_HINT)
+        form.addRow(self.scaling_hint)
+        layout.addLayout(form)
         self.quick = QCheckBox("Switch back the moment the game closes")
         self.quick.setToolTip("Skips the few seconds QRes normally waits after the game exits, which\n"
                               "catch games that restart themselves (e.g. after changing graphics settings).")
@@ -275,6 +284,7 @@ class DetailPanel(QScrollArea):
         self._fill_rates(entry["width"], entry["height"], entry.get("refresh", 0))
         self._update_display_hint()
         self._fill_hdr(entry.get("hdr"))
+        self._fill_scaling(entry.get("scaling"))
         self.watch.setText(", ".join(entry.get("watch", [])))
         self.extra_args.setText(entry.get("extra_args", ""))
         saved = entry.get("commands") or {}
@@ -442,6 +452,7 @@ class DetailPanel(QScrollArea):
         self._fill_resolutions(entry["width"], entry["height"])
         self._fill_rates(entry["width"], entry["height"], entry.get("refresh", 0))
         self._fill_hdr(entry.get("hdr"))
+        self._fill_scaling(entry.get("scaling"))
         self._loading = False
         self._update_display_hint()
         self._changed()
@@ -451,6 +462,17 @@ class DetailPanel(QScrollArea):
         if self._loading or not self.game:
             return
         self._entry()["hdr"] = _hdr_value(self.hdr_combo.currentData())
+        self._changed()
+
+    def _fill_scaling(self, value) -> None:
+        self.scaling_combo.blockSignals(True)
+        self.scaling_combo.setCurrentIndex(max(self.scaling_combo.findData(value or ""), 0))
+        self.scaling_combo.blockSignals(False)
+
+    def _on_scaling(self) -> None:
+        if self._loading or not self.game:
+            return
+        self._entry()["scaling"] = self.scaling_combo.currentData() or None
         self._changed()
 
     def _on_extra_args(self) -> None:
@@ -549,7 +571,8 @@ class DetailPanel(QScrollArea):
             QMessageBox.information(self, "Test resolution", f"That display is already at {target}.")
             return
         TestResolutionDialog(self, target, display.find_qres(self.win.cfg.get("qres_path")),
-                             bool(self.win.cfg.get("temporary", True)), device=device).exec()
+                             bool(self.win.cfg.get("temporary", True)), device=device,
+                             scaling=scaling.CHOICES.get(entry.get("scaling") or "")).exec()
         self.win._poll_state()
 
     def _open_folder(self) -> None:

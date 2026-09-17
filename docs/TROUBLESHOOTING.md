@@ -183,6 +183,17 @@ has the detail.
 A second or two of black screen each way is normal: the display re-syncs when
 HDR changes.
 
+## The game is stretched, or the scaling choice does nothing
+
+**Scaling** tells Windows how to show a resolution smaller than the display,
+but the graphics driver decides whether to listen. For NVIDIA, open NVIDIA
+Control Panel › *Adjust desktop size and position* and set **Perform scaling
+on** to **GPU**; with the display doing the scaling, the monitor's own setting
+wins. AMD (*GPU Scaling* in AMD Software) and Intel have a similar switch. If
+Windows refused the change, a notification says so and the game starts with
+the display's own scaling; `launcher.log` has the detail. At the display's own
+resolution there's nothing to scale, so the choice does nothing there.
+
 ## Extra arguments aren't being used
 
 The game's **Extra arguments** box says where they apply for that game. In short:
