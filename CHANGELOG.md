@@ -17,6 +17,16 @@ it has been proven on real hardware.
   opens at the version you had and says why (the installer's output is in
   `%APPDATA%\QResGUI\update.log`). Nothing is downloaded until you click it.
 
+### Fixed
+- **Games that only ship a Unity-made launcher are no longer called Unity
+  games.** The METAL GEAR SOLID Master Collection's MGS2, MGS3 and Metal Gear
+  & Metal Gear 2 run on their own engine, but their `launcher.exe` is built
+  with Unity, so they were offered Unity's engine options, which mean nothing
+  to the games. A folder now counts as a Unity game only when every program in
+  it (apart from Unity's crash handler) is a Unity player with its own
+  `_Data` folder. Engine choices saved for a game whose folder no longer shows
+  that engine are left off its command line.
+
 ## 1.7.0 — 2026-09-16
 
 Commands around the switch, and engine games told their resolution. Both are

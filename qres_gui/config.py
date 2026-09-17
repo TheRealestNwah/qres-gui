@@ -73,7 +73,14 @@ def extra_args(entry: dict) -> str:
 
     The user's text comes last so it can override an engine option if they want.
     """
-    parts = (engines.command_line(entry.get("engine_args"), entry), entry.get("extra_args") or "")
+    choices = entry.get("engine_args")
+    # Choices only count while the game's folder still shows that engine: detection
+    # can change (1.8.0 stopped calling the MGS Master Collection Unity because of
+    # its launcher), and the panel hides options for a game that isn't one.
+    if isinstance(choices, dict) and entry.get("install_dir") and \
+            engines.detect(entry["install_dir"]) != choices.get("engine"):
+        choices = None
+    parts = (engines.command_line(choices, entry), entry.get("extra_args") or "")
     return " ".join(part.strip() for part in parts if part.strip())
 
 

@@ -94,10 +94,7 @@ def detect(install_dir: str) -> str | None:
     try:
         if not root.is_dir():
             return None
-        # Unity ships UnityPlayer.dll beside the exe (Unity 2017.2 on) and keeps
-        # its data in "<Game>_Data".
-        if (root / "UnityPlayer.dll").is_file() or any(
-                p.is_dir() and (p / "globalgamemanagers").exists() for p in root.glob("*_Data")):
+        if _is_unity(root):
             return UNITY
         # A packaged Unreal game has an Engine folder next to its project folder,
         # whose Binaries\Win64 holds "<Project>-Win64-Shipping.exe".
@@ -106,6 +103,32 @@ def detect(install_dir: str) -> str | None:
     except OSError:
         return None
     return None
+
+
+# Executables a Unity game ships beside its own that aren't the game.
+_UNITY_HELPERS = {"unitycrashhandler32.exe", "unitycrashhandler64.exe"}
+# What a Unity player's "<Game>_Data" folder holds: globalgamemanagers from
+# Unity 5 on, mainData or data.unity3d before that.
+_UNITY_DATA = ("globalgamemanagers", "mainData", "data.unity3d")
+
+
+def _is_unity(root: Path) -> bool:
+    """Whether the game in `root` is a Unity player, not just something beside it.
+
+    A Unity player "<Game>.exe" keeps its data in "<Game>_Data". Every exe in
+    the folder has to be one, or Unity's crash handler: a game on its own engine
+    can ship a Unity-made launcher alongside - the METAL GEAR SOLID Master
+    Collection has launcher.exe and launcher_Data beside METAL GEAR SOLID2.exe -
+    and Unity's flags mean nothing to the game itself.
+    """
+    exes = [p for p in root.glob("*.exe") if p.is_file() and p.name.casefold() not in _UNITY_HELPERS]
+    if not exes:
+        return False
+    for exe in exes:
+        data = root / f"{exe.stem}_Data"
+        if not any((data / name).exists() for name in _UNITY_DATA):
+            return False
+    return True
 
 
 def monitor_choices(count: int) -> tuple[tuple[str, str, tuple[str, ...]], ...]:

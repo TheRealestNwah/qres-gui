@@ -292,6 +292,9 @@ def _make_unity(env):
     folder = env["tmp"] / "steamgame"          # steam:10's install folder in the fake store
     folder.mkdir(exist_ok=True)
     (folder / "UnityPlayer.dll").write_bytes(b"MZ")
+    (folder / "Counter Test.exe").write_bytes(b"MZ")
+    (folder / "Counter Test_Data").mkdir(exist_ok=True)
+    (folder / "Counter Test_Data" / "globalgamemanagers").write_bytes(b"")
 
 
 def test_a_unity_game_offers_its_engines_options(win, env):

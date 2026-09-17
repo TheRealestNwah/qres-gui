@@ -12,15 +12,39 @@ def fresh_detection():
     engines.detect.cache_clear()
 
 
-def test_a_unity_game_is_told_by_its_player_dll(tmp_path):
+def unity_game(folder, exe="Dinkum.exe", marker="globalgamemanagers"):
+    (folder / exe).write_bytes(b"MZ")
+    data = folder / (exe[:-4] + "_Data")
+    data.mkdir()
+    (data / marker).write_bytes(b"")
+
+
+def test_a_unity_game_is_told_by_its_exe_and_data_folder(tmp_path):
+    unity_game(tmp_path)
     (tmp_path / "UnityPlayer.dll").write_bytes(b"MZ")
+    (tmp_path / "UnityCrashHandler64.exe").write_bytes(b"MZ")   # Unity's own helper doesn't count
     assert engines.detect(str(tmp_path)) == engines.UNITY
 
 
-def test_an_older_unity_game_is_told_by_its_data_folder(tmp_path):
+@pytest.mark.parametrize("marker", ["mainData", "data.unity3d"])
+def test_an_older_unity_game_is_told_by_its_data_folder(tmp_path, marker):
+    unity_game(tmp_path, "Game.exe", marker)
+    assert engines.detect(str(tmp_path)) == engines.UNITY
+
+
+def test_a_unity_launcher_beside_another_engine_is_not_the_game(tmp_path):
+    """The METAL GEAR SOLID Master Collection: a Unity launcher.exe next to the game's own exe."""
+    unity_game(tmp_path, "launcher.exe")
+    (tmp_path / "UnityPlayer.dll").write_bytes(b"MZ")
+    (tmp_path / "Engine.dll").write_bytes(b"MZ")
+    (tmp_path / "METAL GEAR SOLID2.exe").write_bytes(b"MZ")
+    assert engines.detect(str(tmp_path)) is None
+
+
+def test_unity_files_without_a_player_exe_are_not_a_unity_game(tmp_path):
+    (tmp_path / "UnityPlayer.dll").write_bytes(b"MZ")
     (tmp_path / "Game_Data").mkdir()
-    (tmp_path / "Game_Data" / "globalgamemanagers").write_bytes(b"")
-    assert engines.detect(str(tmp_path)) == engines.UNITY
+    assert engines.detect(str(tmp_path)) is None
 
 
 def test_an_unreal_game_is_told_by_its_shipping_exe(tmp_path):
@@ -93,3 +117,18 @@ def test_the_resolution_travels_with_the_rest_of_the_arguments():
              "engine_args": {"engine": "unity", "window": "borderless", "resolution": "profile"}}
     assert config.extra_args(entry) == ("-screen-fullscreen 1 -window-mode borderless "
                                         "-screen-width 1920 -screen-height 1080 -typed")
+
+
+def test_choices_for_an_engine_the_folder_no_longer_shows_add_nothing(tmp_path):
+    """A profile saved while a Unity launcher made the game look like Unity keeps no stray flags."""
+    entry = {"engine_args": {"engine": "unity", "window": "windowed"}, "extra_args": "-mine",
+             "install_dir": str(tmp_path)}
+    (tmp_path / "launcher.exe").write_bytes(b"MZ")
+    (tmp_path / "launcher_Data").mkdir()
+    (tmp_path / "launcher_Data" / "globalgamemanagers").write_bytes(b"")
+    (tmp_path / "METAL GEAR SOLID2.exe").write_bytes(b"MZ")
+    assert config.extra_args(entry) == "-mine"
+    (tmp_path / "METAL GEAR SOLID2.exe").unlink()        # now launcher.exe is the only exe: a Unity game
+    engines.detect.cache_clear()
+    assert config.extra_args(entry) == "-screen-fullscreen 0 -mine"
+    assert config.extra_args({**entry, "install_dir": ""}) == "-screen-fullscreen 0 -mine"   # folder unknown
