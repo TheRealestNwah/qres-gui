@@ -43,6 +43,31 @@ you start it.
    ("latest") release otherwise.
 6. Optionally add a "Superseded by …" line to the previous release's notes.
 
+## winget
+
+Each release publishes `QResGUI-<version>-setup.exe` next to the zip. CI builds
+it with Inno Setup from `installer/QResGUI.iss` and tries it on the runner
+before anything is uploaded. Setup unpacks the release and runs its
+`install.ps1`, so it installs exactly what `install.cmd` does, and exits 2
+while QRes GUI or a game started through it is running, which winget reports
+as "in use".
+
+To list a release in winget once CI has published it:
+
+1. `.\tools\winget-manifest.ps1 -Version <version>` writes the three manifest
+   files to `winget\manifests\t\TheRealestNwah\QResGUI\<version>\`, taking the
+   setup's URL and SHA-256 from the GitHub release.
+2. `winget validate --manifest <that folder>`, then
+   `winget install --manifest <that folder>` on a PC to try it.
+3. Copy the folder to the same path in a fork of
+   [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) and open a
+   pull request. Their bots scan the installer and install it in a VM, and a
+   moderator merges it. The first version takes longest.
+
+The package is `TheRealestNwah.QResGUI`. Settings › Apps' `QResGUI` entry is
+its `ProductCode`, so winget recognises copies installed from the zip, and
+`winget upgrade` works either way.
+
 ## Releasing without a local git
 
 Actions › CI › **Run workflow** does steps 4-5 from a browser (the GitHub

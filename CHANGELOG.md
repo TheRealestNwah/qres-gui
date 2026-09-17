@@ -20,6 +20,13 @@ it has been proven on real hardware.
 - **Start with Windows, in the tray** (Settings › Tray & hotkeys), so QRes GUI
   is there to notice games starting. The startup entry always names the
   installed copy, and uninstalling removes it.
+- **An installer**, `QResGUI-<version>-setup.exe`, published with every
+  release alongside the zip, and the groundwork to list QRes GUI in **winget**
+  (`TheRealestNwah.QResGUI`). Setup installs exactly what `install.cmd` does —
+  same folder, Start menu shortcut and Settings › Apps entry, which now names
+  its publisher — and says so plainly if QRes GUI is still running (exit code
+  2, winget's "in use"). CI builds it and tries it on a clean machine before
+  publishing.
 - **Scaling per game** in the Display box: *Keep aspect ratio*, *Centered, no
   scaling* or *Stretch to fill* for a game running at a size smaller than the
   display — on an ultrawide, black bars at the sides instead of a stretched

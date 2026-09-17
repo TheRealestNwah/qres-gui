@@ -46,7 +46,9 @@ if (-not (Test-Path (Join-Path $source "QResLauncher.exe"))) {
 $running = Get-Process QResGUI, QResLauncher -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and $_.Path.StartsWith($dest, [StringComparison]::OrdinalIgnoreCase) }
 if ($running) {
-    throw "QRes GUI, or a game started through it, is running. Close it and run the installer again."
+    # Exit code 2 rather than a thrown error, so setup.exe (and winget, through it) can tell this apart.
+    Write-Host "QRes GUI, or a game started through it, is running. Close it and run the installer again."
+    exit 2
 }
 
 robocopy $source $dest /MIR /XF install.ps1 install.cmd /NFL /NDL /NJH /NJS /NP | Out-Null
@@ -66,6 +68,7 @@ $uninstall = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$dest\un
 New-Item -Path $uninstallKey -Force | Out-Null
 $strings = @{
     DisplayName          = "QRes GUI"
+    Publisher            = "TheRealestNwah"
     DisplayVersion       = $version
     DisplayIcon          = "$exe,0"
     InstallLocation      = $dest
