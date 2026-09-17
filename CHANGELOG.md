@@ -23,7 +23,9 @@ it has been proven on real hardware.
   heading sorts the most recently played first, and the list now remembers
   which column it was sorted by. Launches are noted in
   `%APPDATA%\QResGUI\played.json`, which backups leave out as this PC's own
-  history.
+  history. Game names keep most of the list's width: the Launch hook column
+  opens no wider than it needs up to a limit (drag it wider, or hover for the
+  whole text), and hovering a cut-short name shows all of it.
 
 ### Fixed
 - **Games that only ship a Unity-made launcher are no longer called Unity

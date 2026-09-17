@@ -1,7 +1,11 @@
-"""The update check: picking the newest release, and the launcher's diagnostic command."""
+"""The update check and in-app install: picking the newest release, checking and unpacking its zip, and the hand-over."""
 
+import hashlib
 import io
 import json
+import subprocess
+import sys
+import zipfile
 
 import pytest
 
@@ -66,11 +70,6 @@ def test_launcher_check_update_command(monkeypatch, tmp_path):
 
 
 # --- installing an update -----------------------------------------------------------
-
-import hashlib  # noqa: E402
-import subprocess  # noqa: E402
-import sys  # noqa: E402
-import zipfile  # noqa: E402
 
 ZIP_URL = updates.DOWNLOADS + "v9.9.9/QResGUI-9.9.9-win64.zip"
 DIGEST = "sha256:" + "ab" * 32
