@@ -189,6 +189,17 @@ def test_sorting_by_last_played_puts_the_latest_first_and_is_remembered(win, env
         again.close()
 
 
+def test_game_names_get_the_room(win, env):
+    """Long hook states are capped and Last played doesn't stretch, so names aren't cut to "METAL GEAR ..."."""
+    env["steam"].options = {"10": "x" * 200}             # launch options QRes didn't write: a long state
+    win._reload_launch_options()
+    win.rescan()
+    header = win.tree.header()
+    assert not header.stretchLastSection()
+    assert win.tree.columnWidth(main_window.COL_HOOK) <= main_window.HOOK_WIDTH
+    assert win.items["steam:10"].toolTip(0) == "Counter Test"
+
+
 def test_a_launch_shows_up_without_a_rescan(win):
     assert win.items["gog:1453375253"].text(main_window.COL_PLAYED) == "—"
     played.record("gog:1453375253")                     # what the launcher does as a game starts

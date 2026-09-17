@@ -31,7 +31,8 @@ ICON_SIZE = QSize(92, 43)
 ROLE_ID = Qt.ItemDataRole.UserRole
 ROLE_SORT = Qt.ItemDataRole.UserRole + 1     # what a column sorts by, when not its text
 COLUMNS = ["Game", "Store", "Resolution", "Launch hook", "Last played"]
-COL_PLAYED = 4
+COL_HOOK, COL_PLAYED = 3, 4
+HOOK_WIDTH = 170     # the widest the Launch hook column opens at, so long states don't squeeze names
 
 
 class GameItem(QTreeWidgetItem):
@@ -171,6 +172,10 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column in range(1, len(COLUMNS)):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        # Sized to its contents up to a limit instead (_fit_columns), and draggable: its longest
+        # states would otherwise leave game names as "METAL GEAR ..." in a normal-sized window.
+        header.setSectionResizeMode(COL_HOOK, QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)   # the spare room goes to Game, not Last played
         sort = self.cfg.get("list_sort") or {}
         column = sort.get("column") if sort.get("column") in range(len(COLUMNS)) else 0
         self._sort_column = column
@@ -192,7 +197,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.detail)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
-        splitter.setSizes([780, 560])
+        splitter.setSizes([840, 520])
 
         body = QWidget()
         bl = QVBoxLayout(body)
@@ -776,6 +781,7 @@ class MainWindow(QMainWindow):
             self.items[game.id] = item
             self._fill_row(game)
         self.tree.setSortingEnabled(True)
+        self._fit_columns()
         self._apply_filter()
         self._update_sync_button()
         if selected in self.items:
@@ -790,6 +796,7 @@ class MainWindow(QMainWindow):
         # Only ever on screen while "Show" is on, so it's worth saying which ones they are.
         hidden = game.id in self.hidden_ids()
         item.setText(0, f"{game.name}  (hidden)" if hidden else game.name)
+        item.setToolTip(0, game.name)   # long names are cut short in the column
         item.setData(0, Qt.ItemDataRole.ForegroundRole, QBrush(QColor(theme.MUTED)) if hidden else None)
         item.setText(1, game.store_label)
         item.setForeground(1, QBrush(QColor(theme.STORE_COLORS.get(game.store, theme.MUTED))))
@@ -802,9 +809,13 @@ class MainWindow(QMainWindow):
         item.setForeground(2, QBrush(QColor("#e4e6ea" if enabled else theme.MUTED)))
         text, kind = self.hook_status(game, entry)
         item.setText(3, text)
+        item.setToolTip(COL_HOOK, text)
         color = {"ok": theme.OK, "warn": theme.WARN}.get(kind, theme.MUTED)
         item.setForeground(3, QBrush(QColor(color)))
         self._fill_played(game)
+
+    def _fit_columns(self) -> None:
+        self.tree.setColumnWidth(COL_HOOK, min(self.tree.sizeHintForColumn(COL_HOOK) + 12, HOOK_WIDTH))
 
     # --- last played ------------------------------------------------------------
 
