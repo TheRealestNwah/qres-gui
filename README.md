@@ -282,10 +282,17 @@ and opening it never starts an update check.
 ### Updates
 
 At most once a day, QRes GUI asks GitHub for this project's release list. If
-there's a newer version, a banner offers **What's new** (the release page) or
-**Later** (hidden until the next version). Nothing about your PC or games is
-sent, and nothing is downloaded or installed for you. Turn it off, or **Check
-now**, under **Settings › Updates**.
+there's a newer version, a banner offers **Install update**, **What's new** (the
+release page) or **Later** (hidden until the next version). Nothing about your
+PC or games is sent, and nothing is downloaded until you click **Install
+update**. Turn the check off, or **Check now**, under **Settings › Updates**.
+
+**Install update** downloads the release zip from this project's GitHub
+releases, checks it against the SHA-256 checksum GitHub lists for it, then
+closes QRes GUI, runs the zip's `install.ps1` — the same as installing by hand —
+and opens QRes GUI again. Profiles, settings and hooks are kept. It's only
+offered in the installed copy, and not while a game is running through QRes;
+if installing fails, the next start says why and you keep the version you had.
 
 ## Using it
 
