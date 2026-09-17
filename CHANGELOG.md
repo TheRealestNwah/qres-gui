@@ -4,6 +4,19 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
+## Unreleased
+
+### Added
+- **Install update**, right from the update banner. It downloads the release
+  zip from this project's GitHub releases, checks it against the SHA-256
+  checksum GitHub lists for it and that it holds the version it says, then
+  closes QRes GUI, runs the zip's `install.ps1` — the same as installing by
+  hand — and opens QRes GUI again, which says it's been updated. Profiles,
+  settings and hooks stay as they are. Only the installed copy offers it, and
+  not while a game is running through QRes. If installing fails, QRes GUI
+  opens at the version you had and says why (the installer's output is in
+  `%APPDATA%\QResGUI\update.log`). Nothing is downloaded until you click it.
+
 ## 1.7.0 — 2026-09-16
 
 Commands around the switch, and engine games told their resolution. Both are
