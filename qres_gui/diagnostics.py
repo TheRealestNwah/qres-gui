@@ -161,6 +161,8 @@ def _session_rows() -> list[Row]:
         rows.append(Row("Restores HDR to", _yes(bool(active["original_hdr"]))))
     if active.get("original_scaling") is not None:
         rows.append(Row("Restores scaling to", scaling.describe(int(active["original_scaling"]))))
+    if active.get("original_audio"):
+        rows.append(Row("Restores audio to", active["original_audio"]))
     return rows
 
 

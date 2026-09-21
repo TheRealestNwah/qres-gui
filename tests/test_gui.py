@@ -12,7 +12,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qres_gui import (__version__, autostart, config, display, hdr, notify, paths, played, playnite, session, shortcuts,
+from qres_gui import (__version__, audio, autostart, config, display, hdr, notify, paths, played, playnite, session, shortcuts,
                       transfer, updates)
 from qres_gui.gui import main_window, theme
 from qres_gui.gui.dialogs import (AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog,
@@ -88,6 +88,8 @@ def env(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(display, "set_mode", lambda *a, **k: "stub")  # never change the real resolution
     # A CI runner's virtual display can't do HDR; pretend one that can.
     monkeypatch.setattr(hdr, "status", lambda device=None: hdr.Status(supported=True, enabled=False))
+    monkeypatch.setattr(audio, "outputs", lambda: [audio.Device("speakers", "Desktop speakers"),
+                                                     audio.Device("headset", "Headset")])
     monkeypatch.setattr(updates, "check", lambda current=None: None)  # never reach GitHub from tests
     desktop, menu = tmp_path / "Desktop", tmp_path / "Programs" / "QRes GUI"
     desktop.mkdir()
@@ -559,6 +561,25 @@ def test_scaling_choice_is_saved_and_shown(win):
     assert "Keep aspect ratio" in row(win, "gog:1453375253")[2]
     win.detail.scaling_combo.setCurrentIndex(0)                     # Leave as it is
     assert win.cfg["games"]["gog:1453375253"]["scaling"] is None
+
+
+def test_audio_choice_is_saved_and_an_unavailable_device_is_flagged(win):
+    select(win, "gog:1453375253")
+    combo = win.detail.audio_combo
+    combo.setCurrentIndex(combo.findData("headset"))
+    assert win.cfg["games"]["gog:1453375253"]["audio_device"] == "headset"
+    win.cfg["games"]["gog:1453375253"]["audio_device"] = "unplugged"
+    select(win, "steam:10")
+    select(win, "gog:1453375253")
+    assert combo.currentData() == "unplugged"
+    assert combo.currentText().endswith("(not available)")
+
+
+def test_audio_box_explains_when_windows_has_no_active_output(win, monkeypatch):
+    monkeypatch.setattr(audio, "outputs", lambda: [])
+    select(win, "gog:1453375253")
+    assert not win.detail.audio_combo.isEnabled()
+    assert "no active playback device" in win.detail.audio_hint.text()
 
 
 def test_restore_button_puts_scaling_back(win, monkeypatch):

@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import (__version__, autostart, commands, config, display, hdr, hooks, notify, paths, played, playnite,
+from .. import (__version__, audio, autostart, commands, config, display, hdr, hooks, notify, paths, played, playnite,
                 scaling, session, shortcuts, updates, watcher)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
@@ -1292,6 +1292,7 @@ class MainWindow(QMainWindow):
         device = (active or {}).get("device") or None
         want_hdr = (active or {}).get("original_hdr")
         want_scaling = (active or {}).get("original_scaling")
+        want_audio = (active or {}).get("original_audio")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             how = display.set_mode(mode, display.find_qres(self.cfg.get("qres_path")),
@@ -1316,6 +1317,12 @@ class MainWindow(QMainWindow):
                 hdr_note = f"  HDR couldn't be put back: {exc}"
             finally:
                 QApplication.restoreOverrideCursor()
+        if want_audio:
+            try:
+                audio.set_default(want_audio)
+                hdr_note += "  Playback device put back."
+            except audio.AudioError as exc:
+                hdr_note += f"  Playback device couldn't be put back: {exc}"
         if active and not session.owner_alive(active):
             session.clear()
             self._run_after_commands(active)
@@ -1360,6 +1367,11 @@ class MainWindow(QMainWindow):
         except display.DisplayError:
             current = None  # unplugged since; offer the restore rather than drop the record
         if current == original:
+            if active.get("original_audio"):
+                try:
+                    audio.set_default(active["original_audio"])
+                except audio.AudioError:
+                    pass
             session.clear()
             self._run_after_commands(active)   # the display came back; what was due after it still is
             return

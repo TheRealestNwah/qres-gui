@@ -57,6 +57,15 @@ def test_export_leaves_out_everything_about_this_pc(two_screens, cfg):
         assert local not in data["settings"]
 
 
+def test_audio_device_travels_with_a_profile(two_screens, cfg, tmp_path):
+    cfg["games"]["steam:620"]["audio_device"] = "{headset-endpoint}"
+    data = transfer.read_export(transfer.write_export(cfg, tmp_path / "out.json"))
+    assert data["games"]["steam:620"]["audio_device"] == "{headset-endpoint}"
+    target = {}
+    transfer.merge(target, data)
+    assert target["games"]["steam:620"]["audio_device"] == "{headset-endpoint}"
+
+
 def test_engine_options_travel_with_a_profile(two_screens, cfg, tmp_path):
     cfg["games"]["steam:620"]["engine_args"] = {"engine": "unity", "api": "d3d12"}
     data = transfer.read_export(transfer.write_export(cfg, tmp_path / "out.json"))

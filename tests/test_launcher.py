@@ -9,7 +9,7 @@ import time
 import pytest
 
 from helpers import no_guard
-from qres_gui import config, display, launcher, notify, session
+from qres_gui import audio, config, display, launcher, notify, session
 
 
 @pytest.fixture(autouse=True)
@@ -118,6 +118,42 @@ def test_switch_and_restore_are_paired(monkeypatch):
     assert calls == [display.Mode(2560, 1440, 165), desktop]
     assert seen_session["original"] == desktop.to_dict()
     assert session.read() is None
+
+
+def test_audio_profile_is_paired_with_the_display_switch(monkeypatch):
+    desktop = display.Mode(3440, 1440, 165)
+    calls = []
+    monkeypatch.setattr(display, "current_mode", lambda device=None: desktop)
+    monkeypatch.setattr(display, "resolve", lambda w, h, r, d, device=None: display.Mode(w, h, d.refresh))
+    monkeypatch.setattr(display, "set_mode", lambda *a, **k: "stub")
+    monkeypatch.setattr(launcher, "_spawn_guard", no_guard)
+    monkeypatch.setattr(audio, "default_id", lambda: "desktop-audio")
+    monkeypatch.setattr(audio, "set_default", calls.append)
+    cfg = config.load()
+    cfg.update(switch_delay=0, restore_delay=0)
+    cfg["games"]["steam:1"] = {"enabled": True, "width": 2560, "height": 1440, "refresh": 0,
+                               "audio_device": "headset", "watch": []}
+    config.save(cfg)
+    launcher.run("steam:1", _sleep_cmd(0.2))
+    assert calls == ["headset", "desktop-audio"]
+    assert session.read() is None
+
+
+def test_audio_profile_works_when_the_game_uses_the_desktop_resolution(monkeypatch):
+    desktop = display.Mode(3440, 1440, 165)
+    calls = []
+    monkeypatch.setattr(display, "current_mode", lambda device=None: desktop)
+    monkeypatch.setattr(display, "set_mode", lambda *a, **k: pytest.fail("display should not change"))
+    monkeypatch.setattr(launcher, "_spawn_guard", no_guard)
+    monkeypatch.setattr(audio, "default_id", lambda: "desktop-audio")
+    monkeypatch.setattr(audio, "set_default", calls.append)
+    cfg = config.load()
+    cfg.update(switch_delay=0, restore_delay=0)
+    cfg["games"]["steam:1"] = {"enabled": True, "width": desktop.width, "height": desktop.height,
+                               "refresh": desktop.refresh, "audio_device": "headset", "watch": []}
+    config.save(cfg)
+    launcher.run("steam:1", _sleep_cmd(0.2))
+    assert calls == ["headset", "desktop-audio"]
 
 
 @pytest.mark.parametrize("quick, minimum, maximum", [(False, 2.5, 6), (True, 0, 1.0)])
