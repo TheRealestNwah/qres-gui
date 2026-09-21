@@ -183,6 +183,17 @@ has the detail.
 A second or two of black screen each way is normal: the display re-syncs when
 HDR changes.
 
+## The playback device didn't switch, or didn't switch back
+
+The game starts either way — audio is never allowed to hold it up. QRes GUI
+uses the same Windows default output for console, media and communications,
+and records the previous device in `session.json` while the game runs. If the
+selected headset, receiver or monitor audio output is disconnected, Windows
+keeps its current device instead. Reconnect it, choose it again in the game's
+**Audio** box, then launch once more. If changing a device fails, the detail is
+in `%APPDATA%\QResGUI\launcher.log`; use **Restore desktop resolution** to
+retry putting the recorded device back.
+
 ## The game is stretched, or the scaling choice does nothing
 
 **Scaling** tells Windows how to show a resolution smaller than the display,

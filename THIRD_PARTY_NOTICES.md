@@ -17,6 +17,8 @@ its own terms.
 | bzip2 / libbzip2 | 1.0.8 | bzip2 license (BSD-style) | `Python-LICENSE.txt` |
 | Microsoft Visual C++ runtime and Universal CRT | — | Microsoft Distributable Code | `Python-LICENSE.txt` ("Additional Conditions") |
 | psutil | 7.2.2 | BSD-3-Clause | `psutil-LICENSE.txt` |
+| pycaw | 20251023 | MIT | `pycaw-LICENSE.txt` |
+| comtypes | 1.4.17 | MIT | `comtypes-LICENSE.txt` |
 | PyInstaller bootloader | 6.22.2 | GPL-2.0-or-later with the PyInstaller Bootloader Exception | `PyInstaller-COPYING.txt` |
 | Expat (XML parser in Python) | 2.x | MIT | below |
 | mpdecimal (decimal arithmetic in Python) | 2.5 | BSD-2-Clause | below |

@@ -145,6 +145,16 @@ primary display. A named secondary screen is switched through the Windows
 display API instead, which is per-monitor; the panel says so when you pick one.
 Nothing changes for primary-display profiles, which still go through QRes first.
 
+### Choosing audio
+
+In the profile's **Audio** box, choose the Windows playback device the game
+should use, or leave it alone. QRes GUI records your current default output,
+sets the selected device for the game, and puts the old one back when the game
+ends — including after Steam's **Stop**, Playnite's stop script, the launcher
+guard, or **Restore desktop resolution**. It changes the Windows console,
+media and communications defaults together. If a headset or other saved device
+is unplugged, the game simply starts with Windows' current audio instead.
+
 The display is recorded alongside the resolution, so the safety nets put back
 the screen that was changed rather than whichever happens to be primary later.
 If a profile names a monitor that isn't plugged in, QRes GUI switches **nothing**

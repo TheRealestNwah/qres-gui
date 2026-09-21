@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from .. import config, display, engines, hdr, paths, playnite, scaling, shortcuts
+from .. import audio, config, display, engines, hdr, paths, playnite, scaling, shortcuts
 from ..stores import Game, steam
 from . import theme
 from .dialogs import TestResolutionDialog
@@ -140,6 +140,18 @@ class DetailPanel(QScrollArea):
         self.primary_hint = _muted()
         layout.addWidget(self.primary_hint)
         v.addWidget(box)
+
+        self.audio_box = QGroupBox("Audio")
+        layout = QVBoxLayout(self.audio_box)
+        form = QFormLayout()
+        self.audio_combo = QComboBox()
+        self.audio_combo.setToolTip("The Windows playback device to use while this game runs.")
+        self.audio_combo.currentIndexChanged.connect(self._on_audio)
+        form.addRow("Playback device", self.audio_combo)
+        layout.addLayout(form)
+        self.audio_hint = _muted("Switched when the game starts and put back when it exits.")
+        layout.addWidget(self.audio_hint)
+        v.addWidget(self.audio_box)
 
         # Steam
         self.steam_box = QGroupBox("Steam launch options")
@@ -285,6 +297,7 @@ class DetailPanel(QScrollArea):
         self._update_display_hint()
         self._fill_hdr(entry.get("hdr"))
         self._fill_scaling(entry.get("scaling"))
+        self._fill_audio(entry.get("audio_device"))
         self.watch.setText(", ".join(entry.get("watch", [])))
         self.extra_args.setText(entry.get("extra_args", ""))
         saved = entry.get("commands") or {}
@@ -473,6 +486,39 @@ class DetailPanel(QScrollArea):
         if self._loading or not self.game:
             return
         self._entry()["scaling"] = self.scaling_combo.currentData() or None
+        self._changed()
+
+    def _fill_audio(self, value) -> None:
+        """List output endpoints without making audio support a requirement for profiles."""
+        self.audio_combo.blockSignals(True)
+        self.audio_combo.clear()
+        self.audio_combo.addItem("Leave Windows audio as it is", "")
+        try:
+            outputs = audio.outputs()
+        except audio.AudioError as exc:
+            self.audio_combo.setEnabled(False)
+            theme.set_state(self.audio_hint, "warn" if value else "off", str(exc))
+        else:
+            self.audio_combo.setEnabled(bool(outputs))
+            for device in outputs:
+                self.audio_combo.addItem(device.name, device.id)
+            if not outputs:
+                theme.set_state(self.audio_hint, "warn" if value else "off",
+                                "Windows has no active playback device to choose.")
+            elif value and self.audio_combo.findData(value) < 0:
+                self.audio_combo.addItem(f"{audio.name(value)}  (not available)", value)
+                theme.set_state(self.audio_hint, "warn",
+                                "That playback device isn't available. The game will use Windows' current audio.")
+            else:
+                self.audio_hint.setStyleSheet("")
+                self.audio_hint.setText("Switched when the game starts and put back when it exits.")
+        self.audio_combo.setCurrentIndex(max(self.audio_combo.findData(value or ""), 0))
+        self.audio_combo.blockSignals(False)
+
+    def _on_audio(self) -> None:
+        if self._loading or not self.game:
+            return
+        self._entry()["audio_device"] = self.audio_combo.currentData() or None
         self._changed()
 
     def _on_extra_args(self) -> None:

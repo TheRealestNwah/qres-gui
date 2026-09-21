@@ -8,6 +8,7 @@ by a store-qualified id such as "steam:620" or "gog:1453375253":
      "display": "\\\\.\\DISPLAY2" | "",                    # "" = whichever is primary
      "hdr": true | false | null,                       # null = leave HDR alone
      "scaling": "aspect" | "centered" | "stretch" | null,  # null = leave the display's scaling alone
+     "audio_device": "{endpoint-id}" | null,          # null = leave Windows audio alone
      "watch": ["Game.exe"],                            # optional process names
      "extra_args": "-windowed",                        # added to the store's own arguments
      "launch": {"type": "exe", "path": ..., "args": ..., "cwd": ...}

@@ -33,7 +33,7 @@ from logging.handlers import RotatingFileHandler
 
 import psutil
 
-from . import commands, config, display, hdr, notify, paths, played, playnite, scaling, session
+from . import audio, commands, config, display, hdr, notify, paths, played, playnite, scaling, session
 
 log = logging.getLogger("qres.launcher")
 
@@ -173,6 +173,20 @@ def _switch_scaling(value: int | None, game_id: str, *, starting: bool, device: 
                           game_id=game_id)
 
 
+def _switch_audio(device_id: str | None, game_id: str, *, starting: bool) -> None:
+    """Set the default playback device, if asked to. Never raises."""
+    if not device_id:
+        return
+    try:
+        audio.set_default(device_id)
+    except Exception as exc:
+        log.warning("couldn't set playback device to %s: %s", device_id, exc)
+        if starting:
+            notify.notify("Couldn't change the playback device",
+                          f"{_game_name(game_id)} is starting with Windows' current audio device. ({exc})",
+                          game_id=game_id)
+
+
 class _Switch:
     """One resolution switch, and the HDR and scaling changes that go with it.
 
@@ -196,6 +210,7 @@ class _Switch:
         self.original: display.Mode | None = None   # set only if we changed the resolution
         self.hdr_original: bool | None = None       # set only if HDR is away from its desktop state
         self.scaling_original: int | None = None    # set only if a scaling mode was asked for
+        self.audio_original: str | None = None      # set only if audio is away from its desktop state
         self.token: str | None = None
         self.after: list[str] = []                  # commands to run once the switch is undone
 
@@ -247,14 +262,26 @@ class _Switch:
             log.info("not switching HDR for %s: %s", self.game_id, state.reason)
             want = None
         change_hdr = want is not None and state.enabled != want
+        # Audio follows the same session as the display, so a game can start
+        # with headphones/speakers selected and reliably return Windows to its
+        # earlier default endpoint. A missing headset is an optional failure.
+        carried_audio = active.get("original_audio") if inherit else None
+        want_audio = self.entry.get("audio_device") or None
+        try:
+            desktop_audio = audio.default_id() if carried_audio is None else str(carried_audio)
+            change_audio = bool(want_audio and audio.default_id() != want_audio)
+        except audio.AudioError as exc:
+            log.info("not switching audio for %s: %s", self.game_id, exc)
+            desktop_audio, want_audio, change_audio = None, None, False
 
-        if target == original and not change_hdr:
+        if target == original and not change_hdr and not change_audio:
             log.info("target %s is the desktop mode; nothing to do", target)
             if inherit:
                 if display.current_mode(self.device) != original:  # a taken-over switch needs undoing
                     display.set_mode(original, self.qres, self.temporary, self.device)
                 _switch_scaling(active.get("original_scaling"), self.game_id, starting=False, device=self.device)
                 _switch_hdr(carried, self.game_id, starting=False, device=self.device)
+                _switch_audio(carried_audio, self.game_id, starting=False)
                 session.clear()
                 commands.run_all(stale_after, commands.AFTER, active.get("game_id") or "",
                                  _game_name(active.get("game_id") or ""))
@@ -269,6 +296,8 @@ class _Switch:
             extra["device"] = self.device  # so the guard puts back the screen we changed
         if change_hdr or carried is not None:
             extra["original_hdr"] = self.hdr_original = desktop_hdr
+        if change_audio or carried_audio is not None:
+            extra["original_audio"] = self.audio_original = desktop_audio
         # Scaling only means something at a size other than the display's own.
         want_scaling = scaling.CHOICES.get(self.entry.get("scaling") or "") if target != original else None
         carried_scaling = active.get("original_scaling") if inherit else None
@@ -300,6 +329,8 @@ class _Switch:
                          self.device or "the primary display", how)
                 # After the resolution: changing the mode can bring back the display's own scaling.
                 _switch_scaling(want_scaling, self.game_id, starting=True, device=self.device)
+            if change_audio:
+                _switch_audio(want_audio, self.game_id, starting=True)
             time.sleep(float(self.cfg.get("switch_delay", 1.0)))
         except display.DisplayError as exc:
             notify.notify(f"Couldn't switch to {target}",
@@ -308,7 +339,7 @@ class _Switch:
             guard_starting.join(30)
 
     def restore(self) -> None:
-        if self.original is None and self.hdr_original is None and self.scaling_original is None:
+        if self.original is None and self.hdr_original is None and self.scaling_original is None and self.audio_original is None:
             return
         if not self.entry.get("quick_restore"):
             time.sleep(float(self.cfg.get("restore_delay", 1.0)))
@@ -322,6 +353,7 @@ class _Switch:
                 return  # keep the session record so the GUI can offer to restore
         _switch_scaling(self.scaling_original, self.game_id, starting=False, device=self.device)
         _switch_hdr(self.hdr_original, self.game_id, starting=False, device=self.device)
+        _switch_audio(self.audio_original, self.game_id, starting=False)
         session.clear(token=self.token)
         commands.run_all(self.after, commands.AFTER, self.game_id, self.name)
 
@@ -725,6 +757,7 @@ def guard(pid: int, token: str | None = None) -> int:
         log.info("owner %d is gone; the display is already back at %s", pid, mode)
         _switch_scaling(data.get("original_scaling"), game_id, starting=False, device=device)
         _switch_hdr(data.get("original_hdr"), game_id, starting=False, device=device)
+        _switch_audio(data.get("original_audio"), game_id, starting=False)
         session.clear(token=data.get("token"))
         commands.run_all(data.get("after"), commands.AFTER, game_id, name)
         return 0
@@ -757,6 +790,7 @@ def restore() -> int:
     game_id = (data or {}).get("game_id") or ""
     _switch_scaling((data or {}).get("original_scaling"), game_id, starting=False, device=device)
     _switch_hdr((data or {}).get("original_hdr"), game_id, starting=False, device=device)
+    _switch_audio((data or {}).get("original_audio"), game_id, starting=False)
     session.clear()
     commands.run_all((data or {}).get("after"), commands.AFTER, game_id, _game_name(game_id))
     return 0
@@ -816,6 +850,7 @@ def playnite_stop(payload: str) -> int:
     log.info("restored %s after Playnite stopped %s (%s)", mode, data.get("game_id"), how)
     _switch_scaling(data.get("original_scaling"), data.get("game_id") or "", starting=False, device=device)
     _switch_hdr(data.get("original_hdr"), data.get("game_id") or "", starting=False, device=device)
+    _switch_audio(data.get("original_audio"), data.get("game_id") or "", starting=False)
     session.clear(token=data.get("token"))
     commands.run_all(data.get("after"), commands.AFTER, data.get("game_id") or "",
                      _game_name(data.get("game_id") or ""))
