@@ -328,6 +328,15 @@ last update check. Anything that went wrong is highlighted, and **Copy for a bug
 report** puts it all on the clipboard as plain text. Nothing is sent anywhere,
 and opening it never starts an update check.
 
+For one game, **Check readiness…** (in its Display box, or right-click it in
+the list) checks its profile against the PC as it is now, without switching
+anything: that the display it names is plugged in, that Windows offers its
+resolution and refresh rate there, whether QRes or the Windows API will switch
+it, whether HDR and scaling can change on that display, whether its playback
+device is active, how it gets started and that its exe is still there, and
+whether another game's switch is still in place. Anything that would keep part
+of the profile from applying is highlighted with what to do about it.
+
 ### Updates
 
 At most once a day, QRes GUI asks GitHub for this project's release list. If

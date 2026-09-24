@@ -461,6 +461,50 @@ class DiagnosticsDialog(QDialog):
 
 
 
+class ReadinessDialog(QDialog):
+    """One game's profile checked against this PC as it is now, before launching it."""
+
+    def __init__(self, parent, section: diagnostics.Section):
+        super().__init__(parent)
+        self.setWindowTitle(f"Readiness - {section.title}")
+        self.setMinimumWidth(640)
+        self.section = section
+        self.text = diagnostics.as_text([section])
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        found = diagnostics.problems(section)
+        self.summary = QLabel(wordWrap=True)
+        if found:
+            theme.set_state(self.summary, "warn", f"{len(found)} thing{'s' if len(found) > 1 else ''} to look at "
+                                                  "before playing")
+        else:
+            theme.set_state(self.summary, "ok", "Ready - launching it now should switch everything it's set up to")
+        layout.addWidget(self.summary)
+        layout.addWidget(_hint("Checked against the displays, audio devices and launch setup as they are "
+                               "right now. Nothing was changed or started."))
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        for row in section.rows:
+            value = QLabel(row.value, wordWrap=True)
+            if not row.ok:
+                value.setObjectName("warning")
+            form.addRow(f"{row.label}:", value)
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        copy = QPushButton("Copy", clicked=lambda: self._copy(copy))
+        buttons.addButton(copy, QDialogButtonBox.ButtonRole.ActionRole)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _copy(self, button: QPushButton) -> None:
+        _copy_to_clipboard(self.text)
+        button.setText("Copied")
+        QTimer.singleShot(1500, lambda: button.setText("Copy"))
+
+
+
 FILTER = "QRes GUI profiles (*.qresprofiles.json);;JSON (*.json)"
 SUFFIX = ".qresprofiles.json"
 
