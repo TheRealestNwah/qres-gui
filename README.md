@@ -107,6 +107,17 @@ the list; a hidden game keeps its profile and still switches when you start it.
 While anything is hidden, the line under the list says how many, with a
 **Show** link to bring them back (right-click › **Show in list**).
 
+To set several games up the same way, right-click one that's already how you
+want it › **Save settings as template…**, then select the others (Ctrl- or
+Shift-click) and right-click › **Apply template**. A template holds the
+display, resolution, refresh rate, HDR, scaling, playback device and
+before/after commands; applying it leaves each game's store, launch options,
+shortcuts, process names and extra arguments alone, so Steam games still need
+**Update Steam launch options** afterwards like any other. **Copy settings to
+other games…** does the same from one game without saving a template, and a
+game you added yourself can be **Duplicate**d, say to start the same exe with
+other arguments. Templates are kept on this PC; backups don't include them yet.
+
 Click a column heading to sort the list. **Last played** says when a game was
 last started through QRes, or by Steam for Steam games, whichever is later;
 sorting by it puts the most recent first. The list remembers how you sorted it.
