@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from qres_gui import (__version__, audio, autostart, config, display, hdr, notify, paths, played, playnite, session, shortcuts,
@@ -134,6 +134,10 @@ def win(env):
     QApplication.processEvents()
     yield window
     window.close()
+    # Gone, not just closed: its start-up checks run on timers, and one firing during a later
+    # test would save this test's config into that test's %APPDATA%.
+    window.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def select(win, game_id):
