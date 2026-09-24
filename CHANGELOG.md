@@ -4,6 +4,20 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
+## Unreleased
+
+### Added
+- **Launch history** (**History** in the top bar, or right-click a game ›
+  **Launch history…**). Each launch through QRes lists when it started, how
+  long the game ran, what started it — Steam, QRes GUI's Play button, a
+  shortcut, Playnite, or QRes noticing it start — and whether the desktop came
+  back afterwards: restored, restored except HDR, scaling or the playback
+  device, not restored, or restored late by the safety net or the Restore
+  button. It keeps the last 500 launches, only on this PC
+  (`%APPDATA%\QResGUI\history.json`); backups leave it out and **Clear
+  history** empties it. Last played still reads `played.json`, so clearing the
+  history doesn't forget it. ([#36](https://github.com/TheRealestNwah/qres-gui/issues/36))
+
 ## 1.9.0 — 2026-09-17
 
 Switching for games QRes can't hook, a scaling mode per game, and an installer

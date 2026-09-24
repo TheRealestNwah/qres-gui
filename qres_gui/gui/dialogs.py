@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import html
 import os
 import subprocess
+import time
 from copy import deepcopy
 
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QKeySequence
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-    QFormLayout, QFrame, QHBoxLayout, QKeySequenceEdit, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
-    QPushButton, QRadioButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
+    QFormLayout, QFrame, QHBoxLayout, QHeaderView, QKeySequenceEdit, QLabel, QLineEdit, QMessageBox,
+    QPlainTextEdit, QPushButton, QRadioButton, QScrollArea, QTabWidget, QTreeWidget, QTreeWidgetItem,
+    QVBoxLayout, QWidget,
 )
 
-from .. import __version__, autostart, diagnostics, display, notify, paths, playnite, transfer
+from .. import __version__, autostart, diagnostics, display, history, notify, paths, playnite, transfer
 from .. import scaling as scaling_mod
 from . import theme
 
@@ -459,6 +462,108 @@ class DiagnosticsDialog(QDialog):
         button.setText("Copied")
         QTimer.singleShot(1500, lambda: button.setText("Copy for a bug report"))
 
+
+
+class HistoryDialog(QDialog):
+    """Recent launches through QRes: when, for how long, from where, and whether the desktop came back."""
+
+    COLUMNS = ["Started", "Game", "Played for", "Started by", "Desktop afterwards"]
+
+    def __init__(self, parent, cfg: dict, game_id: str | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("Launch history")
+        self.setMinimumSize(760, 440)
+        self.cfg = cfg
+        self.game_id = game_id
+        self._seen = -1.0
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.addWidget(_hint("Games started through QRes, newest first, and whether your desktop "
+                               "resolution, HDR, scaling and playback device came back afterwards. Kept "
+                               "only on this PC: backups leave it out and nothing is sent anywhere."))
+        self.filter_label = QLabel(objectName="muted")
+        self.filter_label.linkActivated.connect(lambda _: self.show_game(None))
+        layout.addWidget(self.filter_label)
+
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(self.COLUMNS)
+        self.tree.setRootIsDecorated(False)
+        self.tree.setUniformRowHeights(True)
+        self.tree.setAlternatingRowColors(True)
+        header = self.tree.header()
+        for column in range(len(self.COLUMNS)):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setStretchLastSection(False)
+        layout.addWidget(self.tree, 1)
+        self.empty = QLabel(objectName="muted", alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.empty)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        self.clear_btn = QPushButton("Clear history", clicked=self.clear)
+        buttons.addButton(self.clear_btn, QDialogButtonBox.ButtonRole.ActionRole)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        # A game running now gets its end and restore while the window is open.
+        self.timer = QTimer(self, interval=2000, timeout=self.refresh)
+        self.timer.start()
+        self.refresh(force=True)
+
+    def show_game(self, game_id: str | None) -> None:
+        self.game_id = game_id
+        self.refresh(force=True)
+
+    def _name(self, entry: dict) -> str:
+        return (self.cfg.get("games", {}).get(entry["game_id"]) or {}).get("name") or entry.get("name") \
+            or entry["game_id"]
+
+    def refresh(self, force: bool = False) -> None:
+        seen = history.mtime()
+        if seen == self._seen and not force:
+            return
+        self._seen = seen
+        entries = history.load()
+        running = history.running_ids(entries)
+        shown = [e for e in entries if self.game_id is None or e["game_id"] == self.game_id]
+        if self.game_id is not None:
+            name = self.cfg.get("games", {}).get(self.game_id, {}).get("name") or \
+                next((e.get("name") for e in reversed(shown)), None) or self.game_id
+            self.filter_label.setText(f"Only {html.escape(name)} · <a href='all'>Show all games</a>")
+        self.filter_label.setVisible(self.game_id is not None)
+
+        self.tree.clear()
+        for entry in reversed(shown):
+            live = entry["id"] in running
+            restore, why, bad = history.describe_restore(entry, live)
+            item = QTreeWidgetItem([history.describe_start(entry["start"]), self._name(entry),
+                                    history.describe_duration(entry, live), history.describe_source(entry),
+                                    restore])
+            item.setToolTip(0, time.strftime("%A %d %B %Y, %H:%M:%S", time.localtime(entry["start"])))
+            item.setToolTip(4, why)
+            if bad:
+                item.setForeground(4, QBrush(QColor(theme.WARN)))
+            elif entry.get("restore") is None:
+                item.setForeground(4, QBrush(QColor(theme.MUTED)))
+            self.tree.addTopLevelItem(item)
+        self.tree.setVisible(bool(shown))
+        self.empty.setText("No launches yet for this game." if self.game_id is not None and entries
+                           else "Games you start through QRes will be listed here.")
+        self.empty.setVisible(not shown)
+        self.clear_btn.setEnabled(bool(entries))
+
+    def clear(self) -> None:
+        answer = QMessageBox.question(self, "Clear history",
+                                      "Forget every launch in the history? Last played in the game list "
+                                      "is kept.")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            history.clear()
+        except OSError as exc:
+            QMessageBox.warning(self, "Clear history", str(exc))
+        self.refresh(force=True)
 
 
 FILTER = "QRes GUI profiles (*.qresprofiles.json);;JSON (*.json)"

@@ -111,6 +111,16 @@ Click a column heading to sort the list. **Last played** says when a game was
 last started through QRes, or by Steam for Steam games, whichever is later;
 sorting by it puts the most recent first. The list remembers how you sorted it.
 
+**History** in the top bar lists recent launches, newest first: when each
+started, how long it ran, what started it (Steam, QRes GUI's Play button, a
+shortcut, Playnite, or QRes noticing it start), and whether the desktop came
+back afterwards — **Restored**, **Restored except HDR** (or scaling, or the
+playback device), **Not restored**, or **Restored late** when QRes's safety net
+or the Restore button had to do it. Right-click a game › **Launch history…**
+shows just that game. It keeps the last 500 launches in
+`%APPDATA%\QResGUI\history.json`, only on this PC — backups leave it out, and
+**Clear history** empties it without touching Last played.
+
 ### Playnite
 
 **Settings › Integrations › Playnite integration… › Add to Playnite** adds a short block to
