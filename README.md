@@ -241,17 +241,19 @@ Where they apply depends on what starts the game, and the box says which:
 Hand-added games have a full **Arguments** field of their own, since there's no
 store command line to add to.
 
-For games made with **Unity** or **Unreal Engine**, the box also offers that
-engine's own options as choices — window mode (borderless, exclusive
-fullscreen, windowed), graphics API (Direct3D 11 / 12, Vulkan), for Unity
-which monitor, and **Start at this game's resolution**, which tells the game the
-size its profile switches to (`-screen-width`/`-screen-height` for Unity,
-`-ResX`/`-ResY` for Unreal) so a borderless game fills the switched desktop
+For games made with **Unity**, **Unreal Engine**, **Godot**, or **Source**, the
+box also offers that engine's own options as choices — supported window modes,
+graphics APIs for Unity and Unreal, the monitor for Unity and Godot, and
+**Start at this game's resolution**, which tells the game the size its profile
+switches to (`-screen-width`/`-screen-height` for Unity, `-ResX`/`-ResY` for
+Unreal, `--resolution` for Godot, and `-w`/`-h` for Source) so a borderless game fills the switched desktop
 instead of remembering an older size — and shows exactly what they add. QRes GUI tells the engine from
 files in the game's folder; nothing is looked up online. The options are the
 ones each engine documents for every game made with it
 ([Unity](https://docs.unity3d.com/Manual/PlayerCommandLineArguments.html),
-[Unreal](https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-command-line-arguments-reference)),
+[Unreal](https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-command-line-arguments-reference),
+[Godot](https://docs.godotengine.org/en/stable/tutorials/editor/command_line_tutorial.html),
+[Source](https://developer.valvesoftware.com/wiki/Command_line_options)),
 but a game can still choose to ignore them. Anything you type goes after them.
 
 ### Commands before and after the switch

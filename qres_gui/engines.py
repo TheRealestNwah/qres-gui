@@ -8,6 +8,10 @@ maps to flags the engine's manual lists. Sources:
   https://docs.unity3d.com/Manual/PlayerCommandLineArguments.html
 - Unreal Engine: "Unreal Engine Command-Line Arguments Reference",
   https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-command-line-arguments-reference
+- Godot: "Command line tutorial",
+  https://docs.godotengine.org/en/stable/tutorials/editor/command_line_tutorial.html
+- Source: "Command line options",
+  https://developer.valvesoftware.com/wiki/Command_line_options
 
 A game is free to ignore these - Unreal games in particular can be built to -
 so the GUI presents them as "documented by the engine", never as a promise.
@@ -24,7 +28,9 @@ from pathlib import Path
 
 UNITY = "unity"
 UNREAL = "unreal"
-NAMES = {UNITY: "Unity", UNREAL: "Unreal Engine"}
+GODOT = "godot"
+SOURCE = "source"
+NAMES = {UNITY: "Unity", UNREAL: "Unreal Engine", GODOT: "Godot", SOURCE: "Source"}
 
 
 @dataclass(frozen=True)
@@ -72,18 +78,44 @@ OPTIONS: dict[str, tuple[Option, ...]] = {
         )),
         Option("resolution", "Resolution", (), per_profile=True),
     ),
+    GODOT: (
+        Option("window", "Window mode", (
+            ("fullscreen", "Fullscreen", ("--fullscreen",)),
+            ("maximized", "Maximized window", ("--maximized",)),
+            ("windowed", "Windowed", ("--windowed",)),
+        )),
+        Option("monitor", "Monitor", (), per_display=True),
+        Option("resolution", "Resolution", (), per_profile=True),
+    ),
+    SOURCE: (
+        Option("window", "Window mode", (
+            ("fullscreen", "Fullscreen", ("-fullscreen",)),
+            ("borderless", "Borderless window", ("-windowed", "-noborder")),
+            ("windowed", "Windowed", ("-windowed",)),
+        )),
+        Option("resolution", "Resolution", (), per_profile=True),
+    ),
 }
 
 # How each engine spells "render at this size".
 _RESOLUTION_FLAGS = {
     UNITY: lambda w, h: ["-screen-width", str(w), "-screen-height", str(h)],
     UNREAL: lambda w, h: [f"-ResX={w}", f"-ResY={h}"],
+    GODOT: lambda w, h: ["--resolution", f"{w}x{h}"],
+    SOURCE: lambda w, h: ["-w", str(w), "-h", str(h)],
+}
+
+# Profiles store monitor choices as the same friendly one-based number the UI
+# shows. Godot's --screen is zero-based; Unity's -monitor is one-based.
+_MONITOR_FLAGS = {
+    UNITY: lambda n: ["-monitor", str(n)],
+    GODOT: lambda n: ["--screen", str(n - 1)],
 }
 
 
 @lru_cache(maxsize=512)
 def detect(install_dir: str) -> str | None:
-    """The engine a game's install folder shows, or None if it's neither Unity nor Unreal.
+    """The supported engine a game's install folder shows, or None.
 
     Only looks at the folder and one level below it, so it's cheap enough to run
     whenever a game is shown. Cached per folder for the life of the process.
@@ -100,6 +132,16 @@ def detect(install_dir: str) -> str | None:
         # whose Binaries\Win64 holds "<Project>-Win64-Shipping.exe".
         if (root / "Engine" / "Binaries").is_dir() or any(root.glob("*/Binaries/Win64/*-Win64-Shipping.exe")):
             return UNREAL
+        # Godot exports either put a .pck beside the executable or append the
+        # same pack marker to the executable itself.
+        # Source 1 keeps gameinfo.txt in the game directory; Source 2 uses
+        # gameinfo.gi, commonly under game/<name> from the Steam install root.
+        if _is_godot(root):
+            return GODOT
+        if (root / "gameinfo.txt").is_file() or (root / "gameinfo.gi").is_file() or \
+                any(root.glob("*/gameinfo.txt")) or any(root.glob("*/gameinfo.gi")) or \
+                any(root.glob("game/*/gameinfo.gi")):
+            return SOURCE
     except OSError:
         return None
     return None
@@ -110,6 +152,7 @@ _UNITY_HELPERS = {"unitycrashhandler32.exe", "unitycrashhandler64.exe"}
 # What a Unity player's "<Game>_Data" folder holds: globalgamemanagers from
 # Unity 5 on, mainData or data.unity3d before that.
 _UNITY_DATA = ("globalgamemanagers", "mainData", "data.unity3d")
+_GODOT_PACK_MAGIC = b"GDPC"
 
 
 def _is_unity(root: Path) -> bool:
@@ -131,8 +174,31 @@ def _is_unity(root: Path) -> bool:
     return True
 
 
-def monitor_choices(count: int) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
-    return tuple((str(n), f"Monitor {n}", ("-monitor", str(n))) for n in range(1, max(count, 1) + 1))
+def _is_godot(root: Path) -> bool:
+    """Whether `root` has a Godot pack, separate or embedded in an executable."""
+    exes = [path for path in root.glob("*.exe") if path.is_file()]
+    if not exes:
+        return False
+    try:
+        for pack in root.glob("*.pck"):
+            if pack.is_file():
+                with pack.open("rb") as stream:
+                    if stream.read(4) == _GODOT_PACK_MAGIC:
+                        return True
+        for exe in exes:
+            if exe.stat().st_size >= 4:
+                with exe.open("rb") as stream:
+                    stream.seek(-4, 2)
+                    if stream.read(4) == _GODOT_PACK_MAGIC:
+                        return True
+    except OSError:
+        return False
+    return False
+
+
+def monitor_choices(count: int, engine: str = UNITY) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    make_flags = _MONITOR_FLAGS.get(engine, lambda _n: [])
+    return tuple((str(n), f"Monitor {n}", tuple(make_flags(n))) for n in range(1, max(count, 1) + 1))
 
 
 def profile_size(entry: dict | None) -> tuple[int, int] | None:
@@ -159,7 +225,9 @@ def flags(choices: dict | None, entry: dict | None = None) -> list[str]:
             continue
         if option.per_display:
             if value.isdigit() and int(value) >= 1:
-                out += ["-monitor", value]
+                make_flags = _MONITOR_FLAGS.get(engine)
+                if make_flags:
+                    out += make_flags(int(value))
             continue
         if option.per_profile:
             size = profile_size(entry)

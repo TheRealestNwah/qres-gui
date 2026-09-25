@@ -7,6 +7,12 @@ it has been proven on real hardware.
 ## Unreleased
 
 ### Added
+- **Godot and Source engine options** ([#37](https://github.com/TheRealestNwah/qres-gui/issues/37)).
+  QRes GUI now recognizes Godot exports from their `.pck` and executable, and
+  Source 1/2 games from `gameinfo.txt` or `gameinfo.gi`. Their Extra arguments
+  box offers the engines' documented window modes and the game's profile
+  resolution; Godot also offers the connected monitor. Detection stays local
+  to the install folder, with no network lookup.
 - **Profile templates and applying settings to many games at once** (#38).
   Right-click a game › **Save settings as template…** keeps its display,
   resolution, refresh rate, HDR, scaling, playback device, quick switch-back

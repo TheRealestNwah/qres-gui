@@ -59,6 +59,43 @@ def test_an_unreal_game_is_told_by_its_engine_folder(tmp_path):
     assert engines.detect(str(tmp_path)) == engines.UNREAL
 
 
+def test_a_godot_game_is_told_by_its_executable_and_pack(tmp_path):
+    (tmp_path / "CassetteBeasts.exe").write_bytes(b"MZ")
+    (tmp_path / "CassetteBeasts.pck").write_bytes(b"GDPC")
+    assert engines.detect(str(tmp_path)) == engines.GODOT
+
+
+def test_a_godot_game_with_an_embedded_pack_is_detected(tmp_path):
+    (tmp_path / "CrueltySquad.exe").write_bytes(b"MZ\0\0game data" + b"GDPC")
+    assert engines.detect(str(tmp_path)) == engines.GODOT
+
+
+@pytest.mark.parametrize("marker", ["gameinfo.txt", "gameinfo.gi"])
+def test_a_source_game_is_told_by_its_gameinfo_file(tmp_path, marker):
+    game = tmp_path / "hl2"
+    game.mkdir()
+    (game / marker).write_text("GameInfo")
+    assert engines.detect(str(tmp_path)) == engines.SOURCE
+
+
+def test_a_source_2_steam_layout_is_detected(tmp_path):
+    game = tmp_path / "game" / "csgo"
+    game.mkdir(parents=True)
+    (game / "gameinfo.gi").write_text("GameInfo")
+    assert engines.detect(str(tmp_path)) == engines.SOURCE
+
+
+def test_a_pack_without_a_windows_game_is_not_called_godot(tmp_path):
+    (tmp_path / "assets.pck").write_bytes(b"GDPC")
+    assert engines.detect(str(tmp_path)) is None
+
+
+def test_an_unrelated_pck_file_is_not_called_godot(tmp_path):
+    (tmp_path / "game.exe").write_bytes(b"MZ")
+    (tmp_path / "assets.pck").write_bytes(b"not a Godot pack")
+    assert engines.detect(str(tmp_path)) is None
+
+
 @pytest.mark.parametrize("folder", ["", "does-not-exist"])
 def test_no_folder_means_no_engine(tmp_path, folder):
     assert engines.detect(str(tmp_path / folder) if folder else "") is None
@@ -75,13 +112,15 @@ def test_anything_else_is_no_engine(tmp_path):
     ({"engine": "unity", "window": "windowed", "api": "d3d12"}, ["-screen-fullscreen", "0", "-force-d3d12"]),
     ({"engine": "unity", "monitor": "2"}, ["-monitor", "2"]),
     ({"engine": "unreal", "window": "windowed", "api": "vulkan"}, ["-windowed", "-vulkan"]),
+    ({"engine": "godot", "window": "maximized", "monitor": "2"}, ["--maximized", "--screen", "1"]),
+    ({"engine": "source", "window": "borderless"}, ["-windowed", "-noborder"]),
 ])
 def test_choices_become_the_engines_documented_flags(choices, expected):
     assert engines.flags(choices) == expected
 
 
 @pytest.mark.parametrize("choices", [
-    None, "not a dict", {}, {"engine": "godot", "window": "windowed"},      # unknown engine
+    None, "not a dict", {}, {"engine": "cryengine", "window": "windowed"},   # unknown engine
     {"engine": "unity", "window": "sideways"},                               # unknown value
     {"engine": "unity", "monitor": "0"}, {"engine": "unity", "monitor": "x"},  # no such monitor
     {"engine": "unreal", "monitor": "2"},                                    # Unreal has no monitor option
@@ -101,6 +140,8 @@ def test_engine_options_go_before_the_users_own_arguments():
 @pytest.mark.parametrize("engine, expected", [
     ("unity", ["-screen-width", "2560", "-screen-height", "1440"]),
     ("unreal", ["-ResX=2560", "-ResY=1440"]),
+    ("godot", ["--resolution", "2560x1440"]),
+    ("source", ["-w", "2560", "-h", "1440"]),
 ])
 def test_start_at_the_games_resolution_reads_the_profile(engine, expected):
     entry = {"width": 2560, "height": 1440}

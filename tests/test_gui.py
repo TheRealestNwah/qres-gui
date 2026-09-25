@@ -12,8 +12,8 @@ import pytest
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qres_gui import (__version__, audio, autostart, config, diagnostics, display, hdr, history, notify, paths, played,
-                      playnite, session, shortcuts, transfer, updates)
+from qres_gui import (__version__, audio, autostart, config, diagnostics, display, engines, hdr, history, notify, paths,
+                      played, playnite, session, shortcuts, transfer, updates)
 from qres_gui.gui import main_window, theme
 from qres_gui.gui.dialogs import (AddGameDialog, DiagnosticsDialog, HistoryDialog, PlayniteDialog, ReadinessDialog,
                                   SettingsDialog, TransferDialog)
@@ -595,6 +595,30 @@ def test_a_unity_game_can_start_at_its_profiles_resolution(win, env):
     win.detail.res_combo.setCurrentIndex(win.detail.res_combo.findData("1920x1080"))
     assert win.detail.engine_combos["resolution"].itemText(1).endswith("(1920 × 1080)")
     assert "-screen-width 1920 -screen-height 1080" in win.detail.engine_adds.text()
+
+
+@pytest.mark.parametrize("engine, marker, expected_options, choice, added", [
+    ("godot", "Counter Test.pck", {"window", "monitor", "resolution"},
+     ("monitor", "2"), "Adds: --screen 1"),
+    ("source", "hl2/gameinfo.txt", {"window", "resolution"},
+     ("window", "borderless"), "Adds: -windowed -noborder"),
+])
+def test_godot_and_source_games_offer_their_engine_options(win, env, engine, marker, expected_options, choice, added):
+    """#37: offline engine markers expose only that engine's documented choices."""
+    folder = env["tmp"] / "steamgame"
+    folder.mkdir(exist_ok=True)
+    (folder / "Counter Test.exe").write_bytes(b"MZ")
+    path = folder / marker
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"GDPC" if engine == "godot" else b"GameInfo")
+    select(win, "steam:10")
+
+    assert win.detail.engine_note.text() == f"{engines.NAMES[engine]} options"
+    assert set(win.detail.engine_combos) == expected_options
+    key, value = choice
+    combo = win.detail.engine_combos[key]
+    combo.setCurrentIndex(combo.findData(value))
+    assert added in win.detail.engine_adds.text()
 
 
 def test_no_engine_options_for_a_game_whose_engine_isnt_known(win):
