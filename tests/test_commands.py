@@ -14,7 +14,7 @@ import time
 import pytest
 
 from helpers import no_guard
-from qres_gui import commands, config, display, launcher, notify, playnite, session
+from qres_gui import commands, config, display, history, launcher, notify, playnite, session
 
 DESKTOP = display.Mode(3440, 1440, 165)
 STEAM_PLUGIN = "cb91dfc9-b977-43bf-8e70-55f46e410fab"
@@ -142,7 +142,7 @@ def test_after_commands_are_saved_so_a_restore_from_elsewhere_runs_them(display_
         raise KeyboardInterrupt   # the launcher never gets to its own restore
 
     monkeypatch.setattr(launcher, "_start_command", killed_mid_game)
-    monkeypatch.setattr(launcher._Switch, "restore", lambda self: None)
+    monkeypatch.setattr(launcher._Switch, "restore", lambda self: (history.UNCHANGED, []))
     with pytest.raises(KeyboardInterrupt):
         launcher.run("steam:1", [sys.executable, "-c", "pass"])
     assert seen["after"] == [record("game-after")]

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from .. import audio, config, display, engines, hdr, paths, playnite, scaling, shortcuts
+from .. import audio, config, display, engines, hdr, history, paths, playnite, scaling, shortcuts
 from ..stores import Game, steam
 from . import theme
 from .dialogs import TestResolutionDialog
@@ -911,5 +911,5 @@ class DetailPanel(QScrollArea):
             self.win.statusBar().showMessage(f"Asked Playnite to start {self.game.name}…", 6000)
             return
         subprocess.Popen(paths.launcher_command() + ["run", self.game.id], creationflags=DETACHED_PROCESS,
-                         close_fds=True)
+                         close_fds=True, env={**os.environ, history.SOURCE_ENV: history.GUI})
         self.win.statusBar().showMessage(f"Starting {self.game.name}…", 6000)

@@ -7,6 +7,16 @@ it has been proven on real hardware.
 ## Unreleased
 
 ### Added
+- **Launch history** (**History** in the top bar, or right-click a game ›
+  **Launch history…**). Each launch through QRes lists when it started, how
+  long the game ran, what started it — Steam, QRes GUI's Play button, a
+  shortcut, Playnite, or QRes noticing it start — and whether the desktop came
+  back afterwards: restored, restored except HDR, scaling or the playback
+  device, not restored, or restored late by the safety net or the Restore
+  button. It keeps the last 500 launches, only on this PC
+  (`%APPDATA%\QResGUI\history.json`); backups leave it out and **Clear
+  history** empties it. Last played still reads `played.json`, so clearing the
+  history doesn't forget it. ([#36](https://github.com/TheRealestNwah/qres-gui/issues/36))
 - **Audio per game** (the profile's new **Audio** box): pick the Windows
   playback device a game should use — a headset, say — or leave it alone. QRes
   GUI notes the current default output, switches console, media and
