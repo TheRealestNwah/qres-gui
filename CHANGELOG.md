@@ -4,7 +4,7 @@ All notable changes to QRes GUI. Versions before 1.0 were marked as
 pre-releases on GitHub, as is any later version that ships for testing before
 it has been proven on real hardware.
 
-## Unreleased
+## 1.10.0 — 2026-09-24
 
 ### Added
 - **Godot and Source engine options** ([#37](https://github.com/TheRealestNwah/qres-gui/issues/37)).
