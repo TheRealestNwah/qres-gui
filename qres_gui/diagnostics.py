@@ -22,7 +22,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from . import __prerelease__, __version__, display, hdr, notify, paths, playnite, scaling, session
+from . import __prerelease__, __version__, audio, display, hdr, notify, paths, playnite, scaling, session
 
 UNKNOWN = "couldn't read"
 
@@ -226,6 +226,153 @@ def report(cfg: dict | None = None) -> list[Section]:
         _integrations_section(cfg),
         _updates_section(cfg),
     ]
+
+
+# --- one game's readiness -------------------------------------------------------
+#
+# The report above is about the PC; this one is about a single profile, checked
+# against the PC as it is right now: would launching this game switch what it's
+# set up to switch? Same rules - read only what the launcher itself would read,
+# never change anything, and let one failing check cost only its own row.
+
+
+def _checked(label: str, check) -> Row:
+    """A readiness row from `check`, which returns (value, ok); raising costs only this row."""
+    try:
+        value, ok = check()
+    except Exception as exc:                                  # noqa: BLE001
+        return Row(label, f"{UNKNOWN} ({exc.__class__.__name__}: {exc})", False)
+    return Row(label, value, ok)
+
+
+def _profile_display_rows(cfg: dict, entry: dict) -> list[Row]:
+    device = entry.get("display") or None
+    screen = display.find_display(device)
+    if screen is None:
+        where = device or "The primary display"
+        return [Row("Display", f"{where} isn't connected - the game will start without switching", False)]
+    rows = [Row("Display", f"{screen.label}, connected")]
+
+    width, height = int(entry.get("width") or 0), int(entry.get("height") or 0)
+    refresh = int(entry.get("refresh") or 0)
+    desktop = display.current_mode(device)
+    modes = display.list_modes(device)
+    target = display.resolve(width, height, refresh, desktop, device)
+
+    def resolution():
+        if not display.is_size_available(width, height, modes):
+            return (f"{width} × {height} isn't a resolution Windows offers on this display - pick another, "
+                    "or create it as a custom resolution in your graphics driver", False)
+        if refresh and refresh != target.refresh:
+            return f"{target} - {refresh} Hz isn't offered at this size, so it'll use {target.refresh} Hz", False
+        if target == desktop:
+            return f"{target}, the display's current mode - only the settings below change", True
+        return f"{target}, from {desktop}", True
+
+    def switched_by():
+        if not display.drives_primary(device):
+            return "the Windows API (QRes can only switch the primary display)", True
+        qres = display.find_qres(cfg.get("qres_path"))
+        if qres:
+            return f"QRes ({qres})", True
+        return "the Windows API - QRes.exe wasn't found; set it in Settings", False
+
+    def hdr_row():
+        want = entry.get("hdr")
+        if want is None:
+            return "left as it is", True
+        state = hdr.status(device)
+        if not state.supported:
+            return f"won't change - {state.reason or 'Windows gave no reason'}", False
+        now = "on" if state.enabled else "off"
+        return f"turned {'on' if want else 'off'} while the game runs (it's {now} now)", True
+
+    def scaling_row():
+        choice = entry.get("scaling") or ""
+        if choice not in scaling.CHOICES:
+            return "left as it is", True
+        if target == desktop:
+            return "not used - the game runs at the display's own resolution", True
+        if scaling.current(device) is None:
+            return "won't change - Windows doesn't report this display's scaling mode", False
+        label = next(text for text, key in scaling.LABELS if key == choice)
+        return f"{label.lower()}; the graphics driver decides whether to follow it", True
+
+    rows += [_checked("Resolution", resolution), _checked("Switched by", switched_by),
+             _checked("HDR", hdr_row), _checked("Scaling", scaling_row)]
+    return rows
+
+
+def _audio_row(entry: dict) -> Row:
+    def check():
+        wanted = entry.get("audio_device")
+        if not wanted:
+            return "left as it is", True
+        try:
+            found = next((d for d in audio.outputs() if d.id == wanted), None)
+        except audio.AudioError as exc:
+            return f"won't change - {exc}", False
+        if found is None:
+            return ("the chosen device isn't active (unplugged or disabled) - the game will use "
+                    "Windows' current one", False)
+        return found.name, True
+    return _checked("Audio", check)
+
+
+def _launch_rows(game_id: str, entry: dict, hook: tuple[str, str] | None,
+                 launch: dict | None, needs_watch: bool) -> list[Row]:
+    rows = []
+    if hook is not None:
+        text, state = hook
+        rows.append(Row("Starts through", text, state != "warn"))
+    rows.append(_row("Launcher", lambda: paths.hook_command()[-1],
+                     ok=lambda _: os.path.isfile(paths.hook_command()[-1])))
+    target = entry.get("launch") or launch or {}
+    if target.get("type") == "exe" and target.get("path"):
+        path = target["path"]
+        rows.append(Row("Game exe", path if os.path.isfile(path) else f"{path} isn't there any more",
+                        os.path.isfile(path)))
+    if needs_watch and not [w for w in entry.get("watch") or [] if w.strip()]:
+        rows.append(Row("Game process", "not set - QRes can't tell when the game closes, so it switches "
+                                        "back straight away; set it under Game process", False))
+
+    def other_switch():
+        active = session.read()
+        if not active or not session.owner_alive(active) or active.get("game_id") == game_id:
+            return "none", True
+        return (f"{active.get('game_id') or 'another game'} is switched right now - this game won't "
+                "switch until that one has been put back", False)
+    rows.append(_checked("Other switches", other_switch))
+    return rows
+
+
+def readiness(cfg: dict, game_id: str, entry: dict | None, *, hook: tuple[str, str] | None = None,
+              launch: dict | None = None, needs_watch: bool = False) -> Section:
+    """Whether launching `game_id` now would do what its profile asks, one row per part.
+
+    `hook` is how the game list describes the game's launch hook (its text and
+    "ok" / "warn" / "off"), `launch` the store's launch target when the profile
+    has none saved yet, and `needs_watch` whether the store starts the game
+    itself so QRes needs its process name. Nothing is changed or started.
+    """
+    entry = entry or {}
+    name = entry.get("name") or game_id
+    if entry.get("enabled"):
+        rows = [Row("Switching", "on")]
+    else:
+        rows = [Row("Switching", "off - the game starts as it is and nothing below is changed", False)]
+    try:
+        rows += _profile_display_rows(cfg or {}, entry)
+    except Exception as exc:                                  # noqa: BLE001
+        rows.append(Row("Display", f"{UNKNOWN} ({exc.__class__.__name__}: {exc})", False))
+    rows.append(_audio_row(entry))
+    rows += _launch_rows(game_id, entry, hook, launch, needs_watch)
+    return Section(name, rows)
+
+
+def problems(section: Section) -> list[Row]:
+    """The rows of a readiness check that need looking at."""
+    return [row for row in section.rows if not row.ok]
 
 
 def as_text(sections: list[Section] | None = None, cfg: dict | None = None) -> str:

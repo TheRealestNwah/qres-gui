@@ -16,12 +16,12 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import (__version__, audio, autostart, commands, config, display, hdr, history, hooks, notify, paths, played,
-                playnite, scaling, session, shortcuts, updates, watcher)
+from .. import (__version__, audio, autostart, commands, config, diagnostics, display, hdr, history, hooks, notify,
+                paths, played, playnite, scaling, session, shortcuts, updates, watcher)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
-from .dialogs import (AddGameDialog, DiagnosticsDialog, HistoryDialog, PlayniteDialog, SettingsDialog,
+from .dialogs import (AddGameDialog, DiagnosticsDialog, HistoryDialog, PlayniteDialog, ReadinessDialog, SettingsDialog,
                       TransferDialog)
 from .guide import GettingStarted
 from .hotkeys import HotkeyManager
@@ -1050,6 +1050,7 @@ class MainWindow(QMainWindow):
         menu.addAction("Launch history…").triggered.connect(lambda: self.open_history(game_id))
         action = menu.addAction("Show in list" if hidden else "Hide from list")
         action.triggered.connect(lambda: self.set_hidden(game_id, not hidden))
+        menu.addAction("Check readiness…").triggered.connect(lambda: self.check_readiness(game_id))
         return menu
 
     def _on_select(self, current: QTreeWidgetItem | None, _previous) -> None:
@@ -1274,6 +1275,16 @@ class MainWindow(QMainWindow):
 
     def open_diagnostics(self) -> None:
         DiagnosticsDialog(self, self.cfg).exec()
+
+    def readiness(self, game_id: str) -> diagnostics.Section:
+        """The game's profile checked against the PC as it is now; see diagnostics.readiness."""
+        game = self.games[game_id]
+        entry = self.entry_for(game) or self.default_entry(game)
+        return diagnostics.readiness(self.cfg, game_id, entry, hook=self.hook_status(game, entry),
+                                     launch=game.launch, needs_watch=game.needs_watch)
+
+    def check_readiness(self, game_id: str) -> None:
+        ReadinessDialog(self, self.readiness(game_id)).exec()
 
     def open_playnite(self) -> None:
         PlayniteDialog(self).exec()

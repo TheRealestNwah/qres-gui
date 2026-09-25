@@ -137,6 +137,8 @@ class DetailPanel(QScrollArea):
         layout.addWidget(self.quick)
         self.test_btn = QPushButton("Test for 10 seconds", clicked=self._test)
         layout.addLayout(_row(self.test_btn, _muted("Switches, then comes back on its own.")))
+        self.check_btn = QPushButton("Check readiness…", clicked=lambda: self.win.check_readiness(self.game.id))
+        layout.addLayout(_row(self.check_btn, _muted("Checks the display, audio and launch setup; changes nothing.")))
         self.primary_hint = _muted()
         layout.addWidget(self.primary_hint)
         v.addWidget(box)

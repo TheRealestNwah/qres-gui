@@ -12,11 +12,11 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qres_gui import (__version__, audio, autostart, config, display, hdr, history, notify, paths, played, playnite, session,
-                      shortcuts, transfer, updates)
+from qres_gui import (__version__, audio, autostart, config, diagnostics, display, hdr, history, notify, paths, played,
+                      playnite, session, shortcuts, transfer, updates)
 from qres_gui.gui import main_window, theme
-from qres_gui.gui.dialogs import (AddGameDialog, DiagnosticsDialog, HistoryDialog, PlayniteDialog, SettingsDialog,
-                                  TransferDialog)
+from qres_gui.gui.dialogs import (AddGameDialog, DiagnosticsDialog, HistoryDialog, PlayniteDialog, ReadinessDialog,
+                                  SettingsDialog, TransferDialog)
 from qres_gui.stores import Game, steam
 
 MODES = [display.Mode(3440, 1440, 165), display.Mode(3440, 1440, 60), display.Mode(2560, 1440, 165),
@@ -251,7 +251,7 @@ def shown(win):
 
 def test_right_click_hides_a_game_and_says_how_to_get_it_back(win):
     """#10. The menu is built and its action triggered, rather than shown (which would block)."""
-    [_history, hide] = win.game_menu("legendary:Quail").actions()
+    hide = next(action for action in win.game_menu("legendary:Quail").actions() if action.text() == "Hide from list")
     assert hide.text() == "Hide from list"
     hide.trigger()
     assert "legendary:Quail" not in shown(win)
@@ -266,7 +266,7 @@ def test_hidden_games_come_back_through_the_link_under_the_list(win):
     assert "legendary:Quail" in shown(win)
     assert row(win, "legendary:Quail")[0].endswith("(hidden)")
     assert "Hide them again" in win.summary.text()
-    [_history, show] = win.game_menu("legendary:Quail").actions()    # right-click › Show in list
+    show = next(action for action in win.game_menu("legendary:Quail").actions() if action.text() == "Show in list")
     assert show.text() == "Show in list"
     show.trigger()
     assert row(win, "legendary:Quail")[0] == "Hogwarts Legacy"
@@ -959,7 +959,8 @@ def test_history_lists_launches_newest_first(win):
 def test_history_for_one_game_and_back_to_all(win):
     history.start("steam:10", history.STEAM, "Counter Test")
     history.start("gog:1453375253", history.SHORTCUT, "Stardew Valley")
-    [action, _hide] = win.game_menu("steam:10").actions()
+    action = next(action for action in win.game_menu("steam:10").actions()
+                  if action.text() == "Launch history…")
     assert action.text() == "Launch history…"
     dialog = HistoryDialog(win, win.cfg, "steam:10")
     assert [r[1] for r in _rows(dialog)] == ["Counter Test"]
@@ -1188,6 +1189,39 @@ def test_diagnostics_never_checks_for_updates(win, monkeypatch):
     dialog = DiagnosticsDialog(win, win.cfg)
     [section] = [s for s in dialog.sections if s.title == "Updates"]
     assert "9.9.9" in " ".join(row.value for row in section.rows)
+
+
+def test_readiness_uses_the_lists_hook_and_the_stores_target(win):
+    """A game with no profile yet is checked as it would be set up, with the hook the list shows."""
+    section = win.readiness("gog:1453375253")
+    rows = {row.label: row for row in section.rows}
+    assert section.title == "Stardew Valley"
+    assert rows["Starts through"].value == win.hook_status(win.games["gog:1453375253"], None)[0]
+    assert rows["Game exe"].ok                          # the store's exe, since nothing is saved yet
+    assert "gog:1453375253" not in win.cfg["games"]     # checking creates no profile
+
+
+def test_readiness_opens_from_the_panel_and_the_menu(win, monkeypatch):
+    opened = []
+    monkeypatch.setattr(main_window.ReadinessDialog, "exec", lambda self: opened.append(self.section.title))
+    select(win, "gog:1453375253")
+    win.detail.check_btn.click()
+    [action] = [a for a in win.game_menu("steam:10").actions() if a.text() == "Check readiness…"]
+    action.trigger()
+    assert opened == ["Stardew Valley", "Counter Test"]
+
+
+def test_readiness_dialog_says_how_many_things_to_look_at_and_copies(win):
+    select(win, "gog:1453375253")
+    win.detail.enabled.setChecked(True)                 # switching on, but no shortcut made yet
+    win.cfg["games"]["gog:1453375253"]["audio_device"] = "unplugged"
+    dialog = ReadinessDialog(win, win.readiness("gog:1453375253"))
+    problems = diagnostics.problems(dialog.section)
+    assert [row.label for row in problems] == ["Audio", "Starts through"]
+    assert dialog.summary.text().startswith("2 things to look at")
+    [copy] = [b for b in dialog.findChildren(main_window.QPushButton) if b.text() == "Copy"]
+    copy.click()
+    assert QApplication.clipboard().text() == dialog.text
 
 
 def test_settings_opens_the_transfer_dialog(win):
