@@ -17,12 +17,12 @@ from PySide6.QtWidgets import (
     QSplitter, QStatusBar, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import (__version__, audio, autostart, commands, config, display, hdr, hooks, notify, paths, played, playnite,
-                scaling, session, shortcuts, templates, updates, watcher)
+from .. import (__version__, audio, autostart, commands, config, diagnostics, display, hdr, history, hooks, notify,
+                paths, played, playnite, scaling, session, shortcuts, templates, updates, watcher)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
-from .dialogs import (AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog,
+from .dialogs import (AddGameDialog, DiagnosticsDialog, HistoryDialog, PlayniteDialog, ReadinessDialog, SettingsDialog,
                       TransferDialog)
 from .guide import GettingStarted
 from .hotkeys import HotkeyManager
@@ -147,8 +147,10 @@ class MainWindow(QMainWindow):
         self.sync_btn = QPushButton("Update Steam launch options", clicked=self.sync_steam)
         add_btn = QPushButton("Add game…", clicked=self.add_game)
         rescan_btn = QPushButton("Rescan", clicked=self.rescan)
+        history_btn = QPushButton("History", clicked=lambda: self.open_history(),
+                                  toolTip="Recent launches, how long they ran, and whether the desktop came back")
         settings_btn = QPushButton("Settings", clicked=self.open_settings)
-        for button in (self.restore_btn, self.sync_btn, add_btn, rescan_btn, settings_btn):
+        for button in (self.restore_btn, self.sync_btn, add_btn, rescan_btn, history_btn, settings_btn):
             bar.addWidget(button)
 
         # Left: filters and the game list.
@@ -1056,7 +1058,6 @@ class MainWindow(QMainWindow):
         selected = self.selected_game_ids()
         targets = selected if game_id in selected else [game_id]
         menu = QMenu(self)
-
         action = menu.addAction("Save settings as template…")
         action.setEnabled(entry is not None)
         action.triggered.connect(lambda: self.save_template(game_id))
@@ -1075,9 +1076,10 @@ class MainWindow(QMainWindow):
         if game_id.startswith("manual:") and entry is not None:
             menu.addAction("Duplicate").triggered.connect(lambda: self.duplicate_game(game_id))
         menu.addSeparator()
-
+        menu.addAction("Launch history…").triggered.connect(lambda: self.open_history(game_id))
         action = menu.addAction("Show in list" if hidden else "Hide from list")
         action.triggered.connect(lambda: self.set_hidden(game_id, not hidden))
+        menu.addAction("Check readiness…").triggered.connect(lambda: self.check_readiness(game_id))
         return menu
 
     def selected_game_ids(self) -> list[str]:
@@ -1411,8 +1413,21 @@ class MainWindow(QMainWindow):
                                     "already use them):\n\n  " + "\n  ".join(sorted(failed.values())))
             self.statusBar().showMessage("Profiles imported.", 8000)
 
+    def open_history(self, game_id: str | None = None) -> None:
+        HistoryDialog(self, self.cfg, game_id).exec()
+
     def open_diagnostics(self) -> None:
         DiagnosticsDialog(self, self.cfg).exec()
+
+    def readiness(self, game_id: str) -> diagnostics.Section:
+        """The game's profile checked against the PC as it is now; see diagnostics.readiness."""
+        game = self.games[game_id]
+        entry = self.entry_for(game) or self.default_entry(game)
+        return diagnostics.readiness(self.cfg, game_id, entry, hook=self.hook_status(game, entry),
+                                     launch=game.launch, needs_watch=game.needs_watch)
+
+    def check_readiness(self, game_id: str) -> None:
+        ReadinessDialog(self, self.readiness(game_id)).exec()
 
     def open_playnite(self) -> None:
         PlayniteDialog(self).exec()
@@ -1448,11 +1463,13 @@ class MainWindow(QMainWindow):
         finally:
             QApplication.restoreOverrideCursor()
         hdr_note = ""
+        problems = []   # what didn't come back, for the launch history
         if want_scaling is not None:
             try:
                 scaling.set_mode(int(want_scaling), device)
             except Exception as exc:  # as with HDR: the resolution is back, which matters most
                 hdr_note = f"  Scaling couldn't be put back: {exc}"
+                problems.append("scaling")
         if want_hdr is not None:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
@@ -1460,6 +1477,7 @@ class MainWindow(QMainWindow):
                     hdr_note = f"  HDR turned back {'on' if want_hdr else 'off'}."
             except Exception as exc:  # the resolution is already back; don't undo that over HDR
                 hdr_note = f"  HDR couldn't be put back: {exc}"
+                problems.append("HDR")
             finally:
                 QApplication.restoreOverrideCursor()
         if want_audio:
@@ -1468,8 +1486,11 @@ class MainWindow(QMainWindow):
                 hdr_note += "  Playback device put back."
             except audio.AudioError as exc:
                 hdr_note += f"  Playback device couldn't be put back: {exc}"
+                problems.append("playback device")
         if active and not session.owner_alive(active):
             session.clear()
+            # Its owner is gone, so this is the only end the launch will get. (A live owner notes its own.)
+            history.finish(active.get("launch"), history.PARTIAL if problems else history.RECOVERED, problems)
             self._run_after_commands(active)
         self.statusBar().showMessage(f"Switched to {mode} ({how}).{hdr_note}", 8000)
         self._poll_state()
@@ -1518,6 +1539,7 @@ class MainWindow(QMainWindow):
                 except audio.AudioError:
                     pass
             session.clear()
+            history.finish(active.get("launch"), history.RECOVERED)
             self._run_after_commands(active)   # the display came back; what was due after it still is
             return
         where = f" on Display {display.device_number(device)}" if device else ""
@@ -1531,6 +1553,7 @@ class MainWindow(QMainWindow):
             self.restore_desktop()
         else:
             session.clear()
+            history.finish(active.get("launch"), history.FAILED, ["resolution"])
 
     def _poll_state(self) -> None:
         self._refresh_events()

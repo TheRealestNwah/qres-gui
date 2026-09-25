@@ -33,7 +33,7 @@ from logging.handlers import RotatingFileHandler
 
 import psutil
 
-from . import audio, commands, config, display, hdr, notify, paths, played, playnite, scaling, session
+from . import audio, commands, config, display, hdr, history, notify, paths, playnite, scaling, session
 
 log = logging.getLogger("qres.launcher")
 
@@ -118,12 +118,19 @@ def run(game_id: str, command: list[str]) -> int:
     else:
         raise LaunchError(f"There's no launch target saved for {game_id}. Set the game up in QRes GUI first.")
 
-    played.record(game_id)
+    # Steam puts its command after ours; without one, a shortcut or QRes GUI's Play button started us.
+    by_gui = os.environ.pop(history.SOURCE_ENV, "") == history.GUI   # not passed on to the game
+    source = history.STEAM if command else history.GUI if by_gui else history.SHORTCUT
+    if command and history.just_started(game_id, history.PLAYNITE):
+        launch = ""   # Playnite started it through Steam; its scripts note this launch
+    else:
+        launch = history.start(game_id, source, entry.get("name") or game_id)
     watch = {w.strip().lower() for w in entry.get("watch", []) if w.strip()}
     quick = bool(entry.get("quick_restore"))
     started_from = command[0] if command else (entry.get("launch") or {}).get("path", "")
     install_dir = entry.get("install_dir") or (os.path.dirname(started_from) if started_from else "")
-    switch = _Switch(cfg, entry, game_id, install_dir=install_dir) if entry.get("enabled") else None
+    switch = (_Switch(cfg, entry, game_id, install_dir=install_dir, launch=launch)
+              if entry.get("enabled") else None)
     if switch is None:
         log.info("resolution switching is off for %s; launching as-is", game_id)
     else:
@@ -134,57 +141,74 @@ def run(game_id: str, command: list[str]) -> int:
             notify.notify(f"Couldn't switch the resolution for {switch.name}",
                           f"The game is starting at your current resolution. ({exc})", game_id=game_id)
     with _CloseGameWithUs():
+        ended = None
         try:
             started = start()
-            return _wait(started, watch, grace=0.0 if quick else None)
+            code = _wait(started, watch, grace=0.0 if quick else None)
+            ended = time.time()
+            return code
         finally:
-            if switch is not None:
-                switch.restore()
+            outcome, problems = switch.restore() if switch is not None else (history.UNCHANGED, [])
+            history.finish(launch, outcome, problems, end=ended)
 
 
-def _switch_hdr(on: bool | None, game_id: str, *, starting: bool, device: str | None = None) -> None:
-    """Turn HDR on or off, if asked to (None means leave it alone).
+def _switch_hdr(on: bool | None, game_id: str, *, starting: bool, device: str | None = None) -> bool:
+    """Turn HDR on or off, if asked to (None means leave it alone); False if that failed.
 
     Never raises. HDR is an extra, not the job: it must not stop a game from
     starting, nor keep the resolution from being switched back.
     """
     if on is None:
-        return
+        return True
     try:
         hdr.set_enabled(bool(on), device)
+        return True
     except Exception as exc:
         log.warning("couldn't turn HDR %s: %s", "on" if on else "off", exc)
         detail = (f"{_game_name(game_id)} is starting with HDR as it is." if starting
                   else "Put it back in Settings › System › Display.")
         notify.notify(f"Couldn't turn HDR {'on' if on else 'off'}", f"{detail} ({exc})", game_id=game_id)
+        return False
 
 
-def _switch_scaling(value: int | None, game_id: str, *, starting: bool, device: str | None = None) -> None:
-    """Set the display's scaling mode, if asked to (None means leave it alone). Never raises."""
+def _switch_scaling(value: int | None, game_id: str, *, starting: bool, device: str | None = None) -> bool:
+    """Set the display's scaling mode, if asked to (None means leave it alone); False if that failed. Never raises."""
     if value is None:
-        return
+        return True
     try:
         scaling.set_mode(int(value), device)
+        return True
     except Exception as exc:
         log.warning("couldn't set scaling to %s: %s", scaling.describe(value), exc)
         if starting:
             notify.notify("Couldn't change the scaling mode",
                           f"{_game_name(game_id)} is starting with the display's own scaling. ({exc})",
                           game_id=game_id)
+        return False
 
 
-def _switch_audio(device_id: str | None, game_id: str, *, starting: bool) -> None:
-    """Set the default playback device, if asked to. Never raises."""
+def _switch_audio(device_id: str | None, game_id: str, *, starting: bool) -> bool:
+    """Set the default playback device, if asked to; False if that failed. Never raises."""
     if not device_id:
-        return
+        return True
     try:
         audio.set_default(device_id)
+        return True
     except Exception as exc:
         log.warning("couldn't set playback device to %s: %s", device_id, exc)
         if starting:
             notify.notify("Couldn't change the playback device",
                           f"{_game_name(game_id)} is starting with Windows' current audio device. ({exc})",
                           game_id=game_id)
+        return False
+
+
+def _put_back(data: dict, game_id: str, device: str | None) -> list[str]:
+    """Put back the scaling, HDR and playback device a switch record holds; returns what didn't go back."""
+    results = [("scaling", _switch_scaling(data.get("original_scaling"), game_id, starting=False, device=device)),
+               ("HDR", _switch_hdr(data.get("original_hdr"), game_id, starting=False, device=device)),
+               ("playback device", _switch_audio(data.get("original_audio"), game_id, starting=False))]
+    return [what for what, ok in results if not ok]
 
 
 class _Switch:
@@ -279,10 +303,9 @@ class _Switch:
             if inherit:
                 if display.current_mode(self.device) != original:  # a taken-over switch needs undoing
                     display.set_mode(original, self.qres, self.temporary, self.device)
-                _switch_scaling(active.get("original_scaling"), self.game_id, starting=False, device=self.device)
-                _switch_hdr(carried, self.game_id, starting=False, device=self.device)
-                _switch_audio(carried_audio, self.game_id, starting=False)
+                problems = _put_back(active, self.game_id, self.device)
                 session.clear()
+                history.finish(active.get("launch"), history.PARTIAL if problems else history.RECOVERED, problems)
                 commands.run_all(stale_after, commands.AFTER, active.get("game_id") or "",
                                  _game_name(active.get("game_id") or ""))
             # A record for another screen is left alone: we cannot restore it
@@ -338,9 +361,10 @@ class _Switch:
         finally:
             guard_starting.join(30)
 
-    def restore(self) -> None:
+    def restore(self) -> tuple[str, list[str]]:
+        """Undo the switch; returns how that went, for the launch history (see history.finish)."""
         if self.original is None and self.hdr_original is None and self.scaling_original is None and self.audio_original is None:
-            return
+            return history.UNCHANGED, []
         if not self.entry.get("quick_restore"):
             time.sleep(float(self.cfg.get("restore_delay", 1.0)))
         if self.original is not None:
@@ -350,12 +374,12 @@ class _Switch:
             except display.DisplayError as exc:
                 notify.notify(f"Couldn't switch back to {self.original}",
                               f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=self.game_id)
-                return  # keep the session record so the GUI can offer to restore
-        _switch_scaling(self.scaling_original, self.game_id, starting=False, device=self.device)
-        _switch_hdr(self.hdr_original, self.game_id, starting=False, device=self.device)
-        _switch_audio(self.audio_original, self.game_id, starting=False)
+                return history.FAILED, ["resolution"]  # keep the session record so the GUI can offer to restore
+        problems = _put_back({"original_scaling": self.scaling_original, "original_hdr": self.hdr_original,
+                              "original_audio": self.audio_original}, self.game_id, self.device)
         session.clear(token=self.token)
         commands.run_all(self.after, commands.AFTER, self.game_id, self.name)
+        return (history.PARTIAL if problems else history.CLEAN), problems
 
 
 # --- tying the game to the launcher ----------------------------------------
@@ -743,6 +767,7 @@ def guard(pid: int, token: str | None = None) -> int:
         if not current:
             return 0  # something newer took over
         data = current
+    history.finish(data.get("launch"), end=time.time())
 
     mode = display.Mode.from_dict(data["original"])
     device = data.get("device") or None
@@ -755,10 +780,9 @@ def guard(pid: int, token: str | None = None) -> int:
         already_back = False
     if already_back:
         log.info("owner %d is gone; the display is already back at %s", pid, mode)
-        _switch_scaling(data.get("original_scaling"), game_id, starting=False, device=device)
-        _switch_hdr(data.get("original_hdr"), game_id, starting=False, device=device)
-        _switch_audio(data.get("original_audio"), game_id, starting=False)
+        problems = _put_back(data, game_id, device)
         session.clear(token=data.get("token"))
+        history.finish(data.get("launch"), history.PARTIAL if problems else history.RECOVERED, problems)
         commands.run_all(data.get("after"), commands.AFTER, game_id, name)
         return 0
     log.warning("owner %d ended without switching back; restoring", pid)
@@ -767,6 +791,7 @@ def guard(pid: int, token: str | None = None) -> int:
     except display.DisplayError as exc:
         notify.notify(f"Couldn't switch back to {mode}",
                       f"{cause}. Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=game_id)
+        history.finish(data.get("launch"), history.FAILED, ["resolution"])
         return 1
     if code == 0:
         after = f", so QRes switched back to {mode} once the game exited" if waited else \
@@ -788,10 +813,12 @@ def restore() -> int:
                            bool(cfg.get("temporary", True)), device)
     log.info("restored %s on %s (%s)", mode, device or "the primary display", how)
     game_id = (data or {}).get("game_id") or ""
-    _switch_scaling((data or {}).get("original_scaling"), game_id, starting=False, device=device)
-    _switch_hdr((data or {}).get("original_hdr"), game_id, starting=False, device=device)
-    _switch_audio((data or {}).get("original_audio"), game_id, starting=False)
+    problems = _put_back(data or {}, game_id, device)
     session.clear()
+    # Whatever owned the switch didn't undo it (the guard calls this once it has
+    # taken the record over). A live owner will note its own outcome later.
+    if data and (data.get("pid") == os.getpid() or not session.owner_alive(data)):
+        history.finish(data.get("launch"), history.PARTIAL if problems else history.RECOVERED, problems)
     commands.run_all((data or {}).get("after"), commands.AFTER, game_id, _game_name(game_id))
     return 0
 
@@ -813,26 +840,30 @@ def playnite_start(payload: str) -> int:
                  info.get("name"), info.get("installDir"))
         playnite.remember(info)
         return 0
-    played.record(game_id)
+    owner = playnite.owner_pid(int(info.get("owner") or 0))
+    launch = history.start(game_id, history.PLAYNITE, entry.get("name") or str(info.get("name") or ""), owner=owner)
     if not entry.get("enabled"):
         log.info("switching is off for %s", game_id)
         return 0
-    owner = playnite.owner_pid(int(info.get("owner") or 0))
     if owner is None:
         log.warning("no running Playnite to tie the switch to; not switching")
         return 0
     log.info("Playnite is starting %s (%s)", info.get("name"), game_id)
     _Switch(cfg, entry, game_id, owner=owner, install_dir=entry.get("install_dir") or str(info.get("installDir") or ""),
-            source="playnite", playnite_id=str(info.get("id"))).apply()
+            source="playnite", playnite_id=str(info.get("id")), launch=launch).apply()
     return 0
 
 
 def playnite_stop(payload: str) -> int:
     """After-exit script: switch back if Playnite's switch for this game is still in place."""
     info = _decode(payload)
+    ended = time.time()
     data = session.read()
     if not data or data.get("source") != "playnite" or data.get("playnite_id") != str(info.get("id")):
         log.info("nothing of Playnite's to switch back for %s", info.get("id"))
+        game_id, _ = playnite.match(config.load(), info)
+        if game_id:
+            history.finish(history.latest_open(game_id, history.PLAYNITE), history.UNCHANGED, end=ended)
         return 0
     cfg = config.load()
     entry = cfg.get("games", {}).get(data.get("game_id"), {})
@@ -846,12 +877,12 @@ def playnite_stop(payload: str) -> int:
     except display.DisplayError as exc:
         notify.notify(f"Couldn't switch back to {mode}",
                       f"Open QRes GUI and click Restore desktop resolution. ({exc})", game_id=data.get("game_id"))
+        history.finish(data.get("launch"), history.FAILED, ["resolution"], end=ended)
         return 1
     log.info("restored %s after Playnite stopped %s (%s)", mode, data.get("game_id"), how)
-    _switch_scaling(data.get("original_scaling"), data.get("game_id") or "", starting=False, device=device)
-    _switch_hdr(data.get("original_hdr"), data.get("game_id") or "", starting=False, device=device)
-    _switch_audio(data.get("original_audio"), data.get("game_id") or "", starting=False)
+    problems = _put_back(data, data.get("game_id") or "", device)
     session.clear(token=data.get("token"))
+    history.finish(data.get("launch"), history.PARTIAL if problems else history.CLEAN, problems, end=ended)
     commands.run_all(data.get("after"), commands.AFTER, data.get("game_id") or "",
                      _game_name(data.get("game_id") or ""))
     return 0
@@ -878,9 +909,9 @@ def adopt(game_id: str, pid: int) -> int:
     if not game.running():
         log.info("%s (pid %d) has already exited; nothing to switch", game_id, pid)
         return 0
-    played.record(game_id)
+    launch = history.start(game_id, history.WATCHER, entry.get("name") or game_id)
     log.info("%s started outside QRes (pid %d); switching while it runs", game_id, pid)
-    switch = _Switch(cfg, entry, game_id, install_dir=install_dir, source="watcher")
+    switch = _Switch(cfg, entry, game_id, install_dir=install_dir, source="watcher", launch=launch)
     try:
         switch.apply()
     except Exception as exc:  # like run(): a failed switch is reported, never fatal
@@ -888,6 +919,7 @@ def adopt(game_id: str, pid: int) -> int:
         notify.notify(f"Couldn't switch the resolution for {switch.name}",
                       f"It's running at your current resolution. ({exc})", game_id=game_id)
         return 1
+    ended = None
     try:
         grace = 0.0 if entry.get("quick_restore") else EXIT_GRACE
         gone_since: float | None = None
@@ -900,8 +932,10 @@ def adopt(game_id: str, pid: int) -> int:
                 break
             time.sleep(ADOPT_POLL)
         log.info("%s exited", game_id)
+        ended = time.time()
     finally:
-        switch.restore()
+        outcome, problems = switch.restore()
+        history.finish(launch, outcome, problems, end=ended)
     return 0
 
 

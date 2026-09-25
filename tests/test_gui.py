@@ -12,11 +12,11 @@ import pytest
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from qres_gui import (__version__, audio, autostart, config, display, hdr, notify, paths, played, playnite, session, shortcuts,
-                      transfer, updates)
+from qres_gui import (__version__, audio, autostart, config, diagnostics, display, hdr, history, notify, paths, played,
+                      playnite, session, shortcuts, transfer, updates)
 from qres_gui.gui import main_window, theme
-from qres_gui.gui.dialogs import (AddGameDialog, DiagnosticsDialog, PlayniteDialog, SettingsDialog,
-                                  TransferDialog)
+from qres_gui.gui.dialogs import (AddGameDialog, DiagnosticsDialog, HistoryDialog, PlayniteDialog, ReadinessDialog,
+                                  SettingsDialog, TransferDialog)
 from qres_gui.stores import Game, steam
 
 MODES = [display.Mode(3440, 1440, 165), display.Mode(3440, 1440, 60), display.Mode(2560, 1440, 165),
@@ -262,6 +262,7 @@ def action(menu, text):
 def test_right_click_hides_a_game_and_says_how_to_get_it_back(win):
     """#10. The menu is built and its action triggered, rather than shown (which would block)."""
     hide = action(win.game_menu("legendary:Quail"), "Hide from list")
+    assert hide.text() == "Hide from list"
     hide.trigger()
     assert "legendary:Quail" not in shown(win)
     assert config.load()["hidden_games"] == ["legendary:Quail"]
@@ -276,6 +277,7 @@ def test_hidden_games_come_back_through_the_link_under_the_list(win):
     assert row(win, "legendary:Quail")[0].endswith("(hidden)")
     assert "Hide them again" in win.summary.text()
     show = action(win.game_menu("legendary:Quail"), "Show in list")    # right-click › Show in list
+    assert show.text() == "Show in list"
     show.trigger()
     assert row(win, "legendary:Quail")[0] == "Hogwarts Legacy"
     assert win.summary.text() == "4 of 4 games shown · 0 switch resolution"   # the link goes with the last one
@@ -1077,6 +1079,107 @@ def test_restore_desktop_still_restores_the_resolution_if_hdr_fails(win, monkeyp
     assert "HDR couldn't be put back" in win.statusBar().currentMessage()
 
 
+def _stale(game_id, **extra):
+    """A switch record whose launcher has gone, for launch `extra["launch"]`."""
+    session.write(DESKTOP.to_dict(), game_id, **extra)
+    stale = {**session.read(), "create_time": 0.0}
+    paths.session_path().write_text(json.dumps(stale), encoding="utf-8")
+
+
+def test_restore_desktop_finishes_a_launch_nothing_else_will(win, monkeypatch):
+    launch = history.start("steam:10", history.STEAM, "Counter Test")
+    _stale("steam:10", launch=launch, original_hdr=True)
+    monkeypatch.setattr(hdr, "set_enabled", lambda on, device=None: True)
+    win.restore_desktop()
+    assert history.load()[0]["restore"] == history.RECOVERED
+
+
+def test_restore_desktop_notes_what_didnt_come_back(win, monkeypatch):
+    launch = history.start("steam:10", history.STEAM, "Counter Test")
+    _stale("steam:10", launch=launch, original_hdr=True)
+
+    def broken(on, device=None):
+        raise hdr.HdrError("the display said no")
+
+    monkeypatch.setattr(hdr, "set_enabled", broken)
+    win.restore_desktop()
+    [entry] = history.load()
+    assert entry["restore"] == history.PARTIAL and entry["problems"] == ["HDR"]
+
+
+def test_restore_desktop_leaves_a_running_launch_to_its_launcher(win):
+    launch = history.start("steam:10", history.STEAM, "Counter Test")
+    session.write(DESKTOP.to_dict(), "steam:10", launch=launch)   # this process owns it: still running
+    win.restore_desktop()
+    assert history.load()[0].get("restore") is None
+
+
+def test_a_leftover_switch_left_alone_is_noted_as_not_restored(win, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
+    monkeypatch.setattr(display, "current_mode", lambda device=None: display.Mode(1920, 1080, 165))
+    launch = history.start("steam:10", history.STEAM, "Counter Test")
+    _stale("steam:10", launch=launch)
+    win._check_leftover_session()
+    [entry] = history.load()
+    assert entry["restore"] == history.FAILED and entry["problems"] == ["resolution"]
+
+
+def _rows(dialog):
+    return [[dialog.tree.topLevelItem(i).text(c) for c in range(dialog.tree.columnCount())]
+            for i in range(dialog.tree.topLevelItemCount())]
+
+
+def test_history_lists_launches_newest_first(win):
+    first = history.start("steam:10", history.STEAM, "Counter Test", when=time.time() - 7200)
+    history.finish(first, history.CLEAN, end=time.time() - 7200 + 65 * 60)
+    second = history.start("gog:1453375253", history.GUI, "Stardew Valley", when=time.time() - 600)
+    history.finish(second, history.FAILED, ["resolution"], end=time.time() - 60)
+    history.start("legendary:Quail", history.WATCHER, "Hogwarts Legacy")   # still going
+    dialog = HistoryDialog(win, win.cfg)
+    rows = _rows(dialog)
+    assert [r[1] for r in rows] == ["Hogwarts Legacy", "Stardew Valley", "Counter Test"]
+    assert [r[2:] for r in rows] == [["Running", "Noticed starting", "—"],
+                                     ["9 min", "QRes GUI", "Not restored"],
+                                     ["1 h 05 min", "Steam", "Restored"]]
+    assert rows[2][0].startswith("Today") or rows[2][0].startswith("Yesterday")
+    warned = dialog.tree.topLevelItem(1).foreground(4).color().name()
+    assert warned == theme.WARN
+
+
+def test_history_for_one_game_and_back_to_all(win):
+    history.start("steam:10", history.STEAM, "Counter Test")
+    history.start("gog:1453375253", history.SHORTCUT, "Stardew Valley")
+    action = next(action for action in win.game_menu("steam:10").actions()
+                  if action.text() == "Launch history…")
+    assert action.text() == "Launch history…"
+    dialog = HistoryDialog(win, win.cfg, "steam:10")
+    assert [r[1] for r in _rows(dialog)] == ["Counter Test"]
+    assert "Counter Test" in dialog.filter_label.text()
+    dialog.filter_label.linkActivated.emit("all")
+    assert len(_rows(dialog)) == 2 and dialog.filter_label.isHidden()
+
+
+def test_history_picks_up_a_launch_ending_while_it_is_open(win):
+    launch = history.start("steam:10", history.STEAM, "Counter Test", when=time.time() - 120)
+    dialog = HistoryDialog(win, win.cfg)
+    assert _rows(dialog)[0][2] == "Running"
+    time.sleep(0.05)   # a new modification time for the file
+    history.finish(launch, history.CLEAN, end=time.time())
+    dialog.refresh()
+    assert _rows(dialog)[0][2:] == ["2 min", "Steam", "Restored"]
+
+
+def test_history_can_be_cleared_and_says_when_it_is_empty(win):
+    dialog = HistoryDialog(win, win.cfg)
+    assert dialog.tree.isHidden() and not dialog.empty.isHidden() and not dialog.clear_btn.isEnabled()
+    history.start("steam:10", history.STEAM, "Counter Test")
+    dialog.refresh(force=True)
+    assert dialog.clear_btn.isEnabled()
+    dialog.clear_btn.click()                                   # QMessageBox.question answers Yes here
+    assert history.load() == [] and dialog.tree.isHidden()
+    assert "steam:10" in played.load()                         # Last played is kept
+
+
 # --- quick switch / presets -----------------------------------------------------------
 
 def test_preset_chips_appear_and_apply(win, monkeypatch):
@@ -1276,6 +1379,39 @@ def test_diagnostics_never_checks_for_updates(win, monkeypatch):
     dialog = DiagnosticsDialog(win, win.cfg)
     [section] = [s for s in dialog.sections if s.title == "Updates"]
     assert "9.9.9" in " ".join(row.value for row in section.rows)
+
+
+def test_readiness_uses_the_lists_hook_and_the_stores_target(win):
+    """A game with no profile yet is checked as it would be set up, with the hook the list shows."""
+    section = win.readiness("gog:1453375253")
+    rows = {row.label: row for row in section.rows}
+    assert section.title == "Stardew Valley"
+    assert rows["Starts through"].value == win.hook_status(win.games["gog:1453375253"], None)[0]
+    assert rows["Game exe"].ok                          # the store's exe, since nothing is saved yet
+    assert "gog:1453375253" not in win.cfg["games"]     # checking creates no profile
+
+
+def test_readiness_opens_from_the_panel_and_the_menu(win, monkeypatch):
+    opened = []
+    monkeypatch.setattr(main_window.ReadinessDialog, "exec", lambda self: opened.append(self.section.title))
+    select(win, "gog:1453375253")
+    win.detail.check_btn.click()
+    [action] = [a for a in win.game_menu("steam:10").actions() if a.text() == "Check readiness…"]
+    action.trigger()
+    assert opened == ["Stardew Valley", "Counter Test"]
+
+
+def test_readiness_dialog_says_how_many_things_to_look_at_and_copies(win):
+    select(win, "gog:1453375253")
+    win.detail.enabled.setChecked(True)                 # switching on, but no shortcut made yet
+    win.cfg["games"]["gog:1453375253"]["audio_device"] = "unplugged"
+    dialog = ReadinessDialog(win, win.readiness("gog:1453375253"))
+    problems = diagnostics.problems(dialog.section)
+    assert [row.label for row in problems] == ["Audio", "Starts through"]
+    assert dialog.summary.text().startswith("2 things to look at")
+    [copy] = [b for b in dialog.findChildren(main_window.QPushButton) if b.text() == "Copy"]
+    copy.click()
+    assert QApplication.clipboard().text() == dialog.text
 
 
 def test_settings_opens_the_transfer_dialog(win):

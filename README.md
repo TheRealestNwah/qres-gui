@@ -122,6 +122,16 @@ Click a column heading to sort the list. **Last played** says when a game was
 last started through QRes, or by Steam for Steam games, whichever is later;
 sorting by it puts the most recent first. The list remembers how you sorted it.
 
+**History** in the top bar lists recent launches, newest first: when each
+started, how long it ran, what started it (Steam, QRes GUI's Play button, a
+shortcut, Playnite, or QRes noticing it start), and whether the desktop came
+back afterwards — **Restored**, **Restored except HDR** (or scaling, or the
+playback device), **Not restored**, or **Restored late** when QRes's safety net
+or the Restore button had to do it. Right-click a game › **Launch history…**
+shows just that game. It keeps the last 500 launches in
+`%APPDATA%\QResGUI\history.json`, only on this PC — backups leave it out, and
+**Clear history** empties it without touching Last played.
+
 ### Playnite
 
 **Settings › Integrations › Playnite integration… › Add to Playnite** adds a short block to
@@ -338,6 +348,15 @@ right now and what it will restore, the Playnite and notification state, and the
 last update check. Anything that went wrong is highlighted, and **Copy for a bug
 report** puts it all on the clipboard as plain text. Nothing is sent anywhere,
 and opening it never starts an update check.
+
+For one game, **Check readiness…** (in its Display box, or right-click it in
+the list) checks its profile against the PC as it is now, without switching
+anything: that the display it names is plugged in, that Windows offers its
+resolution and refresh rate there, whether QRes or the Windows API will switch
+it, whether HDR and scaling can change on that display, whether its playback
+device is active, how it gets started and that its exe is still there, and
+whether another game's switch is still in place. Anything that would keep part
+of the profile from applying is highlighted with what to do about it.
 
 ### Updates
 
