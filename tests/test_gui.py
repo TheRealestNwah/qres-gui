@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from qres_gui import (__version__, audio, autostart, config, diagnostics, display, hdr, history, notify, paths, played,
@@ -134,6 +134,10 @@ def win(env):
     QApplication.processEvents()
     yield window
     window.close()
+    # Gone, not just closed: its start-up checks run on timers, and one firing during a later
+    # test would save this test's config into that test's %APPDATA%.
+    window.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def select(win, game_id):
@@ -249,9 +253,15 @@ def shown(win):
     return {g for g, item in win.items.items() if not item.isHidden()}
 
 
+def action(menu, text):
+    """A menu's action by its text, as the menu is built rather than shown (which would block)."""
+    [found] = [a for a in menu.actions() if a.text() == text]
+    return found
+
+
 def test_right_click_hides_a_game_and_says_how_to_get_it_back(win):
     """#10. The menu is built and its action triggered, rather than shown (which would block)."""
-    hide = next(action for action in win.game_menu("legendary:Quail").actions() if action.text() == "Hide from list")
+    hide = action(win.game_menu("legendary:Quail"), "Hide from list")
     assert hide.text() == "Hide from list"
     hide.trigger()
     assert "legendary:Quail" not in shown(win)
@@ -266,7 +276,7 @@ def test_hidden_games_come_back_through_the_link_under_the_list(win):
     assert "legendary:Quail" in shown(win)
     assert row(win, "legendary:Quail")[0].endswith("(hidden)")
     assert "Hide them again" in win.summary.text()
-    show = next(action for action in win.game_menu("legendary:Quail").actions() if action.text() == "Show in list")
+    show = action(win.game_menu("legendary:Quail"), "Show in list")    # right-click › Show in list
     assert show.text() == "Show in list"
     show.trigger()
     assert row(win, "legendary:Quail")[0] == "Hogwarts Legacy"
@@ -290,6 +300,186 @@ def test_hidden_games_stay_hidden_under_the_other_filters(win):
     win.set_hidden("steam:10", True)
     win.store_filter.setCurrentIndex(win.store_filter.findData("steam"))
     assert shown(win) == set()
+
+
+# --- profile templates (#38) ------------------------------------------------------------
+
+COUCH = {"name": "Counter Test", "store": "steam", "enabled": True, "width": 1920, "height": 1080,
+         "refresh": 165, "display": "", "hdr": True, "scaling": "aspect", "audio_device": "headset",
+         "commands": {"before": "taskkill /im Discord.exe"}, "watch": ["cs.exe"], "extra_args": "-console",
+         "launch": {"type": "uri", "uri": "steam://rungameid/10"}}
+
+
+def with_template(win, monkeypatch, name="Couch"):
+    win.cfg["games"]["steam:10"] = json.loads(json.dumps(COUCH))
+    monkeypatch.setattr(main_window.QInputDialog, "getText", lambda *a, **k: (name, True))
+    action(win.game_menu("steam:10"), "Save settings as template…").trigger()
+    return win.templates()[-1]
+
+
+def pick(win, *game_ids):
+    """Select several rows, as Ctrl-clicking them would."""
+    win.tree.clearSelection()
+    for game_id in game_ids:
+        win.items[game_id].setSelected(True)
+
+
+def test_a_games_settings_are_saved_as_a_template(win, monkeypatch):
+    template = with_template(win, monkeypatch)
+    assert config.load()["templates"] == [template]
+    assert template == {"name": "Couch", "display": "", "width": 1920, "height": 1080, "refresh": 165,
+                        "hdr": True, "scaling": "aspect", "audio_device": "headset", "quick_restore": False,
+                        "commands": {"before": "taskkill /im Discord.exe"}}
+    assert "Saved “Couch”" in win.statusBar().currentMessage()
+
+
+def test_a_game_without_a_profile_has_nothing_to_save_or_copy(win):
+    menu = win.game_menu("gog:1453375253")
+    assert not action(menu, "Save settings as template…").isEnabled()
+    assert not action(menu, "Copy settings to other games…").isEnabled()
+
+
+def test_saving_under_a_name_already_used_replaces_that_template(win, monkeypatch):
+    with_template(win, monkeypatch)
+    win.cfg["games"]["steam:10"]["width"] = 2560
+    action(win.game_menu("steam:10"), "Save settings as template…").trigger()   # "Couch" again
+    [template] = win.templates()
+    assert template["width"] == 2560
+
+
+def test_a_template_goes_onto_every_selected_game(win, monkeypatch, env):
+    template = with_template(win, monkeypatch)
+    pick(win, "gog:1453375253", "legendary:Quail")
+    menu = win.game_menu("gog:1453375253")
+    [submenu] = [a.menu() for a in menu.actions() if a.menu()]
+    assert submenu.title() == "Apply template to 2 games"
+    action(submenu, "Couch").trigger()
+    games = config.load()["games"]
+    for game_id in ("gog:1453375253", "legendary:Quail"):
+        entry = games[game_id]
+        assert entry["enabled"] and {k: entry.get(k) for k in template if k != "name"} == \
+            {k: v for k, v in template.items() if k != "name"}
+    stardew = games["gog:1453375253"]
+    # Its own identity, launch and process names, not Counter Test's.
+    assert (stardew["name"], stardew["store"], stardew["launch"]["type"]) == ("Stardew Valley", "gog", "exe")
+    assert stardew["watch"] == [] and "extra_args" not in stardew
+    assert games["legendary:Quail"]["store"] == "legendary"
+    assert row(win, "gog:1453375253")[2] == "1920 × 1080  ·  HDR on  ·  Keep aspect ratio"
+    assert "Applied “Couch” to 2 games" in win.statusBar().currentMessage()
+    assert "2 still need a launch hook" in win.statusBar().currentMessage()
+
+
+def test_right_clicking_a_game_outside_the_selection_applies_to_that_one_only(win, monkeypatch):
+    with_template(win, monkeypatch)
+    pick(win, "gog:1453375253", "legendary:Quail")
+    menu = win.game_menu("playnite:abc")
+    [submenu] = [a.menu() for a in menu.actions() if a.menu()]
+    assert submenu.title() == "Apply template"
+    action(submenu, "Couch").trigger()
+    assert set(win.cfg["games"]) == {"steam:10", "playnite:abc"}
+
+
+def test_applying_a_template_leaves_steam_launch_options_alone(win, monkeypatch, env):
+    template = with_template(win, monkeypatch)
+    win.cfg["games"]["steam:10"]["width"] = 2560           # the game has moved on since
+    win.apply_template(template, ["steam:10"])
+    assert env["steam"].writes == [] and env["steam"].options == {"10": "-novid"}
+    entry = win.cfg["games"]["steam:10"]
+    assert entry["width"] == 1920 and entry["extra_args"] == "-console" and entry["watch"] == ["cs.exe"]
+    assert row(win, "steam:10")[3] == "Launch options not set"
+
+
+def test_the_panel_shows_what_a_template_changed(win, monkeypatch):
+    template = with_template(win, monkeypatch)
+    select(win, "gog:1453375253")
+    win.apply_template(template, ["gog:1453375253"])
+    assert win.detail.enabled.isChecked()
+    assert win.detail.res_combo.currentData() == "1920x1080"
+    assert win.detail.before_cmd.text() == "taskkill /im Discord.exe"
+
+
+def test_copying_a_games_settings_to_games_picked_in_a_list(win, monkeypatch):
+    win.cfg["games"]["steam:10"] = json.loads(json.dumps(COUCH))
+    win.set_hidden("playnite:abc", True)
+    shown_in_picker = []
+
+    def choose(dialog):
+        items = [dialog.list.item(i) for i in range(dialog.list.count())]
+        shown_in_picker.extend(item.data(Qt.ItemDataRole.UserRole) for item in items)
+        dialog.search.setText("stardew")
+        dialog._tick_shown(True)
+        dialog.enable.setChecked(False)
+        assert dialog.buttons.button(dialog.buttons.StandardButton.Ok).text() == "Apply to 1 game"
+        assert "Before switching: taskkill /im Discord.exe" in dialog.summary.text()
+        return 1
+
+    monkeypatch.setattr(main_window.ApplyToGamesDialog, "exec", choose)
+    action(win.game_menu("steam:10"), "Copy settings to other games…").trigger()
+    # Not the game being copied, nor a hidden one.
+    assert shown_in_picker == ["legendary:Quail", "gog:1453375253"]
+    entry = win.cfg["games"]["gog:1453375253"]
+    assert entry["width"] == 1920 and entry["hdr"] is True and not entry["enabled"]
+    assert "Copied the settings to Stardew Valley." in win.statusBar().currentMessage()
+
+
+def test_the_picker_starts_with_the_selected_games_ticked(win, monkeypatch):
+    win.cfg["games"]["steam:10"] = json.loads(json.dumps(COUCH))
+    pick(win, "steam:10", "legendary:Quail")
+    monkeypatch.setattr(main_window.ApplyToGamesDialog, "exec", lambda dialog: 1)
+    assert win.copy_settings("steam:10") == 1
+    assert set(win.cfg["games"]) == {"steam:10", "legendary:Quail"}
+
+
+def test_cancelling_the_picker_changes_nothing(win, monkeypatch):
+    win.cfg["games"]["steam:10"] = json.loads(json.dumps(COUCH))
+    pick(win, "legendary:Quail")
+    monkeypatch.setattr(main_window.ApplyToGamesDialog, "exec", lambda dialog: 0)
+    assert win.copy_settings("steam:10") == 0
+    assert set(win.cfg["games"]) == {"steam:10"}
+
+
+def test_a_hand_added_game_can_be_duplicated(win, env):
+    exe = str(env["tmp"] / "Tools" / "Emu.exe")
+    win.cfg["games"]["manual:emu"] = {
+        "name": "Emu", "store": "manual", "enabled": True, "width": 1920, "height": 1080, "refresh": 0,
+        "watch": [], "launch": {"type": "exe", "path": exe, "args": "-a", "cwd": ""}, "install_dir": "",
+    }
+    win.rescan()
+    assert [a.text() for a in win.game_menu("steam:10").actions()].count("Duplicate") == 0
+    action(win.game_menu("manual:emu"), "Duplicate").trigger()
+    copy = win.cfg["games"]["manual:emu-copy"]
+    assert copy["name"] == "Emu (copy)" and copy["launch"] == win.cfg["games"]["manual:emu"]["launch"]
+    copy["launch"]["args"] = "-b"
+    assert win.cfg["games"]["manual:emu"]["launch"]["args"] == "-a"      # its own copy
+    assert win.detail.game.id == "manual:emu-copy"
+
+
+def test_templates_are_renamed_and_removed(win, monkeypatch):
+    with_template(win, monkeypatch, "Couch")
+    with_template(win, monkeypatch, "Desk")
+    dialog = main_window.TemplatesDialog(win)
+    assert dialog.list.count() == 2 and dialog.list.item(0).text().startswith("Couch")
+    monkeypatch.setattr(main_window.QInputDialog, "getText", lambda *a, **k: ("desk", True))
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: said.append(a[2]))
+    said = []
+    dialog._rename()                                       # taken by the other one
+    assert said and [t["name"] for t in win.templates()] == ["Couch", "Desk"]
+    monkeypatch.setattr(main_window.QInputDialog, "getText", lambda *a, **k: ("Living room", True))
+    dialog._rename()
+    assert [t["name"] for t in config.load()["templates"]] == ["Living room", "Desk"]
+    dialog._remove()
+    assert [t["name"] for t in config.load()["templates"]] == ["Desk"]
+    dialog._remove()
+    assert dialog.empty.isVisibleTo(dialog) and not dialog.apply_btn.isEnabled()
+
+
+def test_the_template_manager_applies_through_the_picker(win, monkeypatch):
+    with_template(win, monkeypatch)
+    applied = []
+    monkeypatch.setattr(win, "apply_template_to_picked", lambda template: applied.append(template["name"]))
+    dialog = main_window.TemplatesDialog(win)
+    dialog.apply_btn.click()
+    assert applied == ["Couch"]
 
 
 # --- the detail panel ---------------------------------------------------------------

@@ -56,6 +56,9 @@ DEFAULTS: dict = {
     "watch_games": False,
     # how the game list is sorted: column index, and whether it's reversed
     "list_sort": {"column": 0, "descending": False},
+    # profile templates: display, audio and command settings saved to put onto
+    # other games (templates.py)
+    "templates": [],
     "games": {},
 }
 

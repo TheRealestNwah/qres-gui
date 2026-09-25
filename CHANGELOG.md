@@ -7,6 +7,16 @@ it has been proven on real hardware.
 ## Unreleased
 
 ### Added
+- **Profile templates and applying settings to many games at once** (#38).
+  Right-click a game › **Save settings as template…** keeps its display,
+  resolution, refresh rate, HDR, scaling, playback device, quick switch-back
+  and before/after commands under a name; **Apply template** puts them onto the
+  game, or onto every game selected (Ctrl- or Shift-click several first).
+  **Copy settings to other games…** does the same straight from one game
+  through a list to tick games in, and hand-added games can be **Duplicate**d.
+  Applying leaves each game's store, launch options, shortcuts, process names
+  and extra arguments as they were, and says which games still need a launch
+  hook. **Manage templates…** renames and removes them.
 - **Launch history** (**History** in the top bar, or right-click a game ›
   **Launch history…**). Each launch through QRes lists when it started, how
   long the game ran, what started it — Steam, QRes GUI's Play button, a

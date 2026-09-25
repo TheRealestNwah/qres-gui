@@ -6,18 +6,19 @@ import re
 import subprocess
 import threading
 import time
+from copy import deepcopy
 from pathlib import Path
 
 from PySide6.QtCore import QFileInfo, QRect, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QBrush, QColor, QDesktopServices, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QFileIconProvider, QFrame, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressDialog, QPushButton, QSplitter, QStatusBar, QTreeWidget,
-    QTreeWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QApplication, QCheckBox, QComboBox, QFileDialog, QFileIconProvider, QFrame, QHBoxLayout,
+    QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QProgressDialog, QPushButton,
+    QSplitter, QStatusBar, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 from .. import (__version__, audio, autostart, commands, config, diagnostics, display, hdr, history, hooks, notify,
-                paths, played, playnite, scaling, session, shortcuts, updates, watcher)
+                paths, played, playnite, scaling, session, shortcuts, templates, updates, watcher)
 from ..stores import STORE_LABELS, Game, SteamClient, detect_all, steam
 from . import theme
 from .detail_panel import DetailPanel
@@ -26,6 +27,7 @@ from .dialogs import (AddGameDialog, DiagnosticsDialog, HistoryDialog, PlayniteD
 from .guide import GettingStarted
 from .hotkeys import HotkeyManager
 from .presets import ApplyResolutionDialog, PresetsDialog, preset_device, preset_label, preset_name
+from .templates_dialog import ApplyToGamesDialog, TemplatesDialog
 from .tray import Tray
 
 ICON_SIZE = QSize(92, 43)
@@ -180,6 +182,8 @@ class MainWindow(QMainWindow):
         self.tree.setUniformRowHeights(True)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSortingEnabled(True)
+        # Ctrl- and Shift-click pick several games, for applying a template to them all at once.
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         header = self.tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column in range(1, len(COLUMNS)):
@@ -1044,14 +1048,149 @@ class MainWindow(QMainWindow):
             self.game_menu(item.data(0, ROLE_ID)).exec(self.tree.viewport().mapToGlobal(pos))
 
     def game_menu(self, game_id: str) -> QMenu:
-        """The right-click menu for a game in the list."""
+        """The right-click menu for a game in the list.
+
+        Applying a template goes to every selected game when the one clicked is
+        among them, so picking several and right-clicking one does them all.
+        """
         hidden = game_id in self.hidden_ids()
+        entry = self.cfg["games"].get(game_id)
+        selected = self.selected_game_ids()
+        targets = selected if game_id in selected else [game_id]
         menu = QMenu(self)
+        action = menu.addAction("Save settings as template…")
+        action.setEnabled(entry is not None)
+        action.triggered.connect(lambda: self.save_template(game_id))
+        saved = self.templates()
+        apply_menu = menu.addMenu("Apply template" if len(targets) == 1
+                                  else f"Apply template to {len(targets)} games")
+        for template in saved:
+            action = apply_menu.addAction(template["name"])
+            action.triggered.connect(lambda _=False, t=template: self.apply_template(t, targets))
+        if saved:
+            apply_menu.addSeparator()
+        apply_menu.addAction("Manage templates…").triggered.connect(lambda: self.open_templates())
+        action = menu.addAction("Copy settings to other games…")
+        action.setEnabled(entry is not None)
+        action.triggered.connect(lambda: self.copy_settings(game_id))
+        if game_id.startswith("manual:") and entry is not None:
+            menu.addAction("Duplicate").triggered.connect(lambda: self.duplicate_game(game_id))
+        menu.addSeparator()
         menu.addAction("Launch history…").triggered.connect(lambda: self.open_history(game_id))
         action = menu.addAction("Show in list" if hidden else "Hide from list")
         action.triggered.connect(lambda: self.set_hidden(game_id, not hidden))
         menu.addAction("Check readiness…").triggered.connect(lambda: self.check_readiness(game_id))
         return menu
+
+    def selected_game_ids(self) -> list[str]:
+        return [item.data(0, ROLE_ID) for item in self.tree.selectedItems() if not item.isHidden()]
+
+    # --- profile templates (#38) --------------------------------------------------
+
+    def templates(self) -> list[dict]:
+        return templates.load(self.cfg)
+
+    def set_templates(self, saved: list[dict]) -> None:
+        self.cfg["templates"] = saved
+        self._save_now()
+
+    def save_template(self, game_id: str) -> None:
+        entry = self.cfg["games"].get(game_id)
+        if entry is None:
+            return
+        name, ok = QInputDialog.getText(self, "Save settings as template", "Template name",
+                                        text=entry.get("name") or "")
+        name = name.strip()
+        if not ok or not name:
+            return
+        saved = self.templates()
+        template = templates.make(name, entry)
+        at = templates.find(saved, name)
+        if at >= 0:
+            answer = QMessageBox.question(self, "Save settings as template",
+                                          f"Replace the template “{saved[at]['name']}” with these settings?")
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            saved[at] = template
+        else:
+            saved.append(template)
+        self.set_templates(saved)
+        self.statusBar().showMessage(f"Saved “{name}”. Right-click games › Apply template to use it.", 8000)
+
+    def apply_template(self, template: dict, game_ids: list[str], enable: bool = True) -> int:
+        """Put a template's settings onto games; how many it changed.
+
+        Only the template's fields change (templates.py), so each game keeps its
+        store identity, launch block and hooks. Steam launch options and
+        shortcuts aren't written here - the Launch hook column shows which
+        games still need them, same as turning switching on by hand.
+        """
+        done = []
+        for game_id in game_ids:
+            game = self.games.get(game_id)
+            if game is None:
+                continue
+            entry = self.entry_for(game, create=True)
+            templates.apply(entry, template)
+            if enable:
+                entry["enabled"] = True
+            done.append(game)
+        if not done:
+            return 0
+        self._save_now()
+        self.refresh_rows()
+        if self.detail.game and self.detail.game.id in {game.id for game in done}:
+            self.detail.show_game(self.detail.game)
+        unhooked = sum(1 for game in done
+                       if self.hook_status(game, self.cfg["games"].get(game.id))[1] == "warn")
+        name = template.get("name")
+        message = (f"Applied “{name}” to " if name else "Copied the settings to ") + \
+            (done[0].name if len(done) == 1 else f"{len(done)} games") + "."
+        if unhooked:
+            message += (" It still needs" if len(done) == 1 else f" {unhooked} still need") + \
+                " a launch hook; see the Launch hook column."
+        self.statusBar().showMessage(message, 10000)
+        return len(done)
+
+    def pick_and_apply(self, template: dict, title: str, exclude: str | None = None) -> int:
+        """Ask which games get the settings, then apply them; how many changed."""
+        checked = [gid for gid in self.selected_game_ids() if gid != exclude]
+        dialog = ApplyToGamesDialog(self, template, title, checked=checked, exclude=exclude)
+        if not dialog.exec():
+            return 0
+        return self.apply_template(template, dialog.chosen(), enable=dialog.enable.isChecked())
+
+    def apply_template_to_picked(self, template: dict) -> int:
+        return self.pick_and_apply(template, f"Apply “{template['name']}”")
+
+    def copy_settings(self, game_id: str) -> int:
+        """Duplicate one game's settings onto others, without saving a template."""
+        entry = self.cfg["games"].get(game_id)
+        if entry is None:
+            return 0
+        name = entry.get("name") or game_id
+        return self.pick_and_apply(templates.make("", entry), f"Copy {name}'s settings", exclude=game_id)
+
+    def duplicate_game(self, game_id: str) -> str | None:
+        """A copy of a hand-added game, e.g. to start the same exe with other arguments or at another size.
+
+        Only manual games: they own their launch block. A store game is one
+        entry per store id, so its settings are copied onto other games instead.
+        """
+        entry = self.cfg["games"].get(game_id)
+        if entry is None or entry.get("store") != "manual":
+            return None
+        name = f"{entry.get('name') or 'Game'} (copy)"
+        new_id = self._manual_id(name)
+        self.cfg["games"][new_id] = {**deepcopy(entry), "name": name}
+        self._save_now()
+        self.rescan()
+        if new_id in self.items:
+            self.tree.setCurrentItem(self.items[new_id])
+        return new_id
+
+    def open_templates(self) -> None:
+        TemplatesDialog(self).exec()
 
     def _on_select(self, current: QTreeWidgetItem | None, _previous) -> None:
         game = self.games.get(current.data(0, ROLE_ID)) if current else None
@@ -1100,10 +1239,7 @@ class MainWindow(QMainWindow):
         if not dialog.exec():
             return
         name, exe, args = dialog.values()
-        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "game"
-        game_id, n = f"manual:{slug}", 2
-        while game_id in self.cfg["games"] or game_id in self.games:
-            game_id, n = f"manual:{slug}-{n}", n + 1
+        game_id = self._manual_id(name)
         target = self.cfg["default_target"]
         self.cfg["games"][game_id] = {
             "name": name, "store": "manual", "enabled": True,
@@ -1115,6 +1251,13 @@ class MainWindow(QMainWindow):
         self.rescan()
         if game_id in self.items:
             self.tree.setCurrentItem(self.items[game_id])
+
+    def _manual_id(self, name: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "game"
+        game_id, n = f"manual:{slug}", 2
+        while game_id in self.cfg["games"] or game_id in self.games:
+            game_id, n = f"manual:{slug}-{n}", n + 1
+        return game_id
 
     def remove_manual_game(self, game: Game) -> None:
         """Remove a hand-added game, or one only known because Playnite started it."""
