@@ -695,7 +695,7 @@ class DetailPanel(QScrollArea):
                 combo = QComboBox()
                 combo.addItem("Game's choice", "")
                 if option.per_display:
-                    choices = engines.monitor_choices(len(self.win.displays))
+                    choices = engines.monitor_choices(len(self.win.displays), engine)
                 elif option.per_profile:
                     choices = ((engines.PROFILE_RESOLUTION, "Start at this game's resolution", ()),)
                 else:
