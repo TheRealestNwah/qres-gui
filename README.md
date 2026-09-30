@@ -10,6 +10,10 @@ small command-line tool that isn't included here. Get it separately and point
 QRes GUI at it, or drop it into the install folder. Without it, QRes GUI uses
 the Windows display API directly.
 
+> **Built with AI.** QRes GUI's code, tests and documentation were written by
+> Claude, an AI model from Anthropic, directed and tested by the maintainer.
+> See [How it was made](#how-it-was-made).
+
 > **Tested with** a Steam game (MGS4, including its launcher handing off to
 > the game) launched from Steam and from Playnite: switching once, switching
 > back on quit, Steam's *Stop* button (closes the game and switches back), the
@@ -486,6 +490,13 @@ release, but treat it as you would any early software from a single maintainer:
 read the code if that matters to you (it's all here and MIT-licensed), and see
 [Known limitations](#known-limitations) for what hasn't been tested on real
 hardware.
+
+## Support
+
+Everything on my GitHub is free of charge and open source. If you find it
+useful and want to leave a tip or buy me a coffee, you can do that at
+[ko-fi.com/morrowheat23](https://ko-fi.com/morrowheat23). It's appreciated,
+never expected.
 
 ## License
 
