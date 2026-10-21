@@ -5,6 +5,7 @@ release/
 __pycache__/
 *.pyc
 .pytest_cache/
+.pytest-release/
 
 # Private agent notes (CLAUDE.md is shared)
 CLAUDE.local.md
