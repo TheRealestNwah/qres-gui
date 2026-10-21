@@ -28,3 +28,17 @@ CI (`windows-latest`, job `test-and-build`) runs pytest, builds the zip and inst
 - Running from source writes Steam launch options that call `.venv\Scripts\pythonw.exe QResLauncher.pyw`; the built exe is the stable target.
 - Update `THIRD_PARTY_NOTICES.md` and `licenses/` when dependencies change.
 - Update `CHANGELOG.md` for user-visible changes, and bump the version in both places.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
