@@ -42,3 +42,7 @@ Default five-role vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Private notes
+
+Machine-specific or private notes go in `CLAUDE.local.md`, which is gitignored. If it exists, read it before starting work.
